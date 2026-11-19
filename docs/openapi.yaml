@@ -1,0 +1,182 @@
+openapi: 3.0.3
+info:
+  title: Moca-ToTo Care API Specification
+  description: Moca-ToTo Care (모카토토 케어) 백엔드 RESTful API Specification & OpenAPI 3.0 Document
+  version: 1.0.0
+servers:
+  - url: https://ais-dev-46r2ew3mjxuswyukwfreqm-626233427705.asia-northeast1.run.app/api/v1
+    description: Cloud Run Container Development Server
+  - url: http://localhost:3000/api/v1
+    description: Local Development Server
+
+paths:
+  /pets:
+    get:
+      summary: 반려동물 목록 조회
+      operationId: getPets
+      responses:
+        '200':
+          description: 성공적인 반려동물 리스트 반환
+    post:
+      summary: 신규 반려동물 등록
+      operationId: createPet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, example: "모카" }
+                breed: { type: string, example: "토이푸들" }
+                birthDate: { type: string, format: date, example: "2022-05-15" }
+                weight: { type: number, example: 3.8 }
+                traits: { type: string, example: "산책 러버" }
+      responses:
+        '201':
+          description: 반려동물 생성 완료
+
+  /pets/{petId}:
+    patch:
+      summary: 반려동물 프로필 및 테마 수정
+      operationId: updatePet
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 수정 성공
+
+  /pets/{petId}/dashboard:
+    get:
+      summary: 홈 대시보드 케어 지수 및 활동 요약 조회
+      operationId: getPetDashboard
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 대시보드 종합 데이터 조회 성공
+
+  /pets/{petId}/happiness:
+    post:
+      summary: 터치 교감 인터랙션에 따른 행복도 업데이트
+      operationId: updateHappiness
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                increment: { type: integer, example: 5 }
+      responses:
+        '200':
+          description: 행복도 상승 성공
+
+  /records/daily:
+    get:
+      summary: 일일 체크리스트 조회
+      operationId: getDailyRecords
+      parameters:
+        - name: petId
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: 조회 성공
+    post:
+      summary: 일일 체크리스트 기록 추가
+      operationId: createDailyRecord
+      responses:
+        '201':
+          description: 생성 성공
+
+  /records/health:
+    get:
+      summary: 건강 및 병원 방문 기록 조회
+      operationId: getHealthRecords
+      responses:
+        '200':
+          description: 조회 성공
+    post:
+      summary: 건강 기록 등록
+      operationId: createHealthRecord
+      responses:
+        '201':
+          description: 생성 성공
+
+  /walks/start:
+    post:
+      summary: 실시간 산책 세션 시작
+      operationId: startWalk
+      responses:
+        '201':
+          description: 산책 시작됨
+
+  /walks/end:
+    post:
+      summary: 산책 종료 및 GPS 데이터 저장
+      operationId: endWalk
+      responses:
+        '200':
+          description: 산책 종료 저장 완료
+
+  /walks/{walkId}/shapeify:
+    post:
+      summary: GPS 경로 Shapeify 아트 변환 처리
+      operationId: shapeifyRoute
+      parameters:
+        - name: walkId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetShape: { type: string, enum: [paw, heart, bone], example: "paw" }
+      responses:
+        '200':
+          description: Shapeify 변환 메타데이터 생성 성공
+
+  /places/nearby:
+    get:
+      summary: 위치 기반 주변 장소 검색 (병원, 카페, 공원, 미용실)
+      operationId: getNearbyPlaces
+      parameters:
+        - name: category
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: 주변 장소 목록 반환
+
+  /ai/doctor-analyze:
+    post:
+      summary: Google Gemini 기반 AI 닥터 속마음 번역 및 수의사 케어 분석
+      operationId: analyzeDoctorAI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                petName: { type: string, example: "모카" }
+                breed: { type: string, example: "토이푸들" }
+                age: { type: string, example: "2살" }
+                behaviorText: { type: string, example: "꼬리를 흔들며 신발을 물고 다니고 있어요" }
+      responses:
+        '200':
+          description: Gemini AI 분석 및 속마음 번역 결과 반환

@@ -1,0 +1,6 @@
+{
+  "name": "Fluffy Days",
+  "description": "AI-powered companion pet care app featuring gentle pet animations, pixel art pet generator, walk Shapeify route morphing, health logging, and neighborhood community maps.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

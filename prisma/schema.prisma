@@ -1,0 +1,215 @@
+// Prisma Schema for Moca-ToTo Care Backend (PostgreSQL + PostGIS)
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  email        String        @unique @db.VarChar(255)
+  passwordHash String        @map("password_hash") @db.VarChar(255)
+  nickname     String        @db.VarChar(50)
+  role         String        @default("owner") @db.VarChar(20) // 'owner' | 'co_parent' | 'guest'
+  avatarUrl    String?       @map("avatar_url") @db.VarChar(500)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  pets            Pet[]
+  reviews         PlaceReview[]
+  sharedPets      PetShare[]
+  sentInvites     FamilyInvite[]
+
+  @@map("users")
+}
+
+// Co-parent access grants — backs `User.sharedPetIds` in the app's in-memory model.
+// A row here means `userId` can view/edit `petId` without being its primary owner (Pet.userId).
+model PetShare {
+  id       String   @id @default(uuid()) @db.Uuid
+  petId    String   @map("pet_id") @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  role     String   @default("co_parent") @db.VarChar(20)
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  pet  Pet  @relation(fields: [petId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([petId, userId])
+  @@map("pet_shares")
+}
+
+// Pending co-parent invite codes — backs `familyInvitesDb` in server.ts.
+// Consuming an invite (POST /auth/family/join) creates a PetShare row; the invite itself is not deleted (matches current in-memory behavior, which keeps invites reusable until expiry).
+model FamilyInvite {
+  id          String   @id @default(uuid()) @db.Uuid
+  inviteCode  String   @unique @map("invite_code") @db.VarChar(50)
+  petId       String   @map("pet_id") @db.Uuid
+  petName     String   @map("pet_name") @db.VarChar(50)
+  inviterId   String   @map("inviter_id") @db.Uuid
+  inviterName String   @map("inviter_name") @db.VarChar(50)
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  pet     Pet  @relation(fields: [petId], references: [id], onDelete: Cascade)
+  inviter User @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@map("family_invites")
+}
+
+model Pet {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  name         String        @db.VarChar(50)
+  breed        String        @db.VarChar(50)
+  birthDate    DateTime      @map("birth_date") @db.Date
+  weight       Float         @default(3.5) @db.DoublePrecision
+  happiness    Int           @default(80) @db.SmallInt
+  traits       String?       @db.Text
+  avatarUrl    String?       @map("avatar_url") @db.VarChar(500)
+  currentTheme String        @default("living") @map("current_theme") @db.VarChar(30)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyRecords  DailyRecord[]
+  healthRecords HealthRecord[]
+  walkLogs      WalkLog[]
+  shares        PetShare[]
+  invites       FamilyInvite[]
+  aiConsultations AiConsultation[]
+
+  @@map("pets")
+}
+
+model DailyRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  petId           String   @map("pet_id") @db.Uuid
+  recordDate      DateTime @map("record_date") @db.Date
+  feedChecked     Boolean  @default(false) @map("feed_checked")
+  waterChecked    Boolean  @default(false) @map("water_checked")
+  stoolChecked    Boolean  @default(false) @map("stool_checked")
+  medicineChecked Boolean  @default(false) @map("medicine_checked")
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  pet             Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  @@unique([petId, recordDate])
+  @@map("daily_records")
+}
+
+model HealthRecord {
+  id            String   @id @default(uuid()) @db.Uuid
+  petId         String   @map("pet_id") @db.Uuid
+  visitDate     DateTime @map("visit_date") @db.Date
+  category      String   @db.VarChar(30) // checkup, vaccine, treatment, dental
+  hospitalName  String   @map("hospital_name") @db.VarChar(100)
+  doctorName    String?  @map("doctor_name") @db.VarChar(50)
+  diagnosis     String   @db.Text
+  prescription  String?  @db.Text
+  cost          Int      @default(0)
+  weightAtVisit Float    @map("weight_at_visit") @db.DoublePrecision
+  memo          String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  pet           Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  @@map("health_records")
+}
+
+model WalkLog {
+  id                 String   @id @default(uuid()) @db.Uuid
+  petId              String   @map("pet_id") @db.Uuid
+  distanceKm         Float    @map("distance_km") @db.DoublePrecision
+  durationSeconds    Int      @map("duration_seconds")
+  calories           Int      @default(0)
+  steps              Int      @default(0)
+  rawCoordinatesJson Json     @map("raw_coordinates_json")
+  shapeType          String   @default("paw") @map("shape_type") @db.VarChar(20) // paw, heart, bone, raw
+  shapedPathSvg      String?  @map("shaped_path_svg") @db.Text
+  savedCardUrl       String?  @map("saved_card_url") @db.VarChar(500)
+  weather            String?  @db.VarChar(50)
+  note               String?  @db.Text
+  startedAt          DateTime @map("started_at")
+  endedAt            DateTime @default(now()) @map("ended_at")
+  // PostGIS trajectory built from rawCoordinatesJson via ST_MakeLine at write time.
+  // Prisma Client cannot map `geometry` — read/write it with $queryRaw/$executeRaw (see server.ts walk endpoints).
+  geomRoute          Unsupported("geometry(LineString,4326)")? @map("geom_route")
+
+  pet                Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  @@map("walk_logs")
+}
+
+enum PlaceCategory {
+  hospital
+  cafe
+  park
+  grooming
+}
+
+model Place {
+  id        String        @id @default(uuid()) @db.Uuid
+  name      String        @db.VarChar(100)
+  category  PlaceCategory
+  latitude  Float         @db.DoublePrecision
+  longitude Float         @db.DoublePrecision
+  address   String        @db.VarChar(255)
+  phone     String?       @db.VarChar(30)
+  tags      String[]
+  imageUrl  String?       @map("image_url") @db.VarChar(500)
+  is24h     Boolean       @default(false) @map("is_24h")
+  rating    Float         @default(5.0) @db.DoublePrecision
+  createdAt DateTime      @default(now()) @map("created_at")
+  // PostGIS point built from latitude/longitude via ST_MakePoint at write time.
+  // Prisma Client cannot map `geometry` — read/write it with $queryRaw/$executeRaw (see server.ts places endpoints).
+  geom      Unsupported("geometry(Point,4326)")?
+
+  reviews   PlaceReview[]
+
+  @@map("places")
+}
+
+model PlaceReview {
+  id        String   @id @default(uuid()) @db.Uuid
+  placeId   String   @map("place_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  rating    Int      @db.SmallInt
+  content   String   @db.Text
+  tags      String[]
+  createdAt DateTime @default(now()) @map("created_at")
+
+  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("place_reviews")
+}
+
+// Gemini AI Doctor consultation history — backs `aiConsultationsDb` in server.ts.
+model AiConsultation {
+  id                    String   @id @default(uuid()) @db.Uuid
+  petId                 String   @map("pet_id") @db.Uuid
+  petName               String   @map("pet_name") @db.VarChar(50)
+  category              String   @db.VarChar(30) // behavior | stool | skin | food | general
+  imageUrl              String?  @map("image_url") @db.Text
+  userQuery             String   @map("user_query") @db.Text
+  summary               String   @db.Text
+  urgencyLevel          String   @default("NORMAL") @map("urgency_level") @db.VarChar(20) // NORMAL | ATTENTION | URGENT
+  healthScore           Int      @map("health_score")
+  innerVoiceTranslation String   @map("inner_voice_translation") @db.Text
+  moodStatus            String   @map("mood_status") @db.VarChar(100)
+  detectedIssues        Json     @map("detected_issues")
+  veterinaryTip         String   @map("veterinary_tip") @db.Text
+  actionPlan            Json     @map("action_plan")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  pet Pet @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  @@map("ai_consultations")
+}
