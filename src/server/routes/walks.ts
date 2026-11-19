@@ -1,17 +1,21 @@
 import type { Express } from 'express';
+import { getAuthUser } from '../auth';
+import { getPetAccess, requirePetAccess, sendPetNotFound } from '../authorization';
 import { validate } from '../validation';
 import { endWalkBody, shapeifyBody, startWalkBody, walkIdParams } from '../schemas';
 import type { Store } from '../store';
 
 export function registerWalkRoutes(app: Express, store: Store): void {
-  const { activeWalks } = store;
+  const { activeWalks, petsDb } = store;
+  const memberOfBodyPet = requirePetAccess(petsDb, { from: 'body', level: 'member' });
 
-  app.post('/api/v1/walks/start', validate({ body: startWalkBody }), (req, res) => {
+  app.post('/api/v1/walks/start', validate({ body: startWalkBody }), memberOfBodyPet, (req, res) => {
     const { petId, startLatitude, startLongitude } = req.body;
     const walkId = `walk_${Date.now()}`;
     activeWalks[walkId] = {
       walkId,
-      petId: petId || 'p1',
+      petId,
+      userId: getAuthUser(res).id,
       startedAt: new Date(),
       coordinates: [{ lat: startLatitude || 37.5665, lng: startLongitude || 126.9780 }]
     };
@@ -20,11 +24,21 @@ export function registerWalkRoutes(app: Express, store: Store): void {
 
   app.post('/api/v1/walks/end', validate({ body: endWalkBody }), (req, res) => {
     const { walkId, distanceKm, durationSeconds, calories, steps, coordinates } = req.body;
-    const walk = activeWalks[walkId] || { startedAt: new Date() };
+    const activeWalk = walkId ? activeWalks[walkId] : undefined;
+    const walk = activeWalk || { startedAt: new Date() };
+
+    // The pet comes from the active walk if there is one, otherwise from the body
+    // (the client logs finished walks with { ...session, petId }).
+    const petId: unknown = activeWalk?.petId ?? req.body.petId;
+    if (typeof petId !== 'string') {
+      return res.status(400).json({ success: false, message: '산책한 반려동물(petId)이 필요합니다.' });
+    }
+    const pet = petsDb.find(p => p.id === petId);
+    if (!pet || !getPetAccess(getAuthUser(res), pet)) return sendPetNotFound(res);
 
     const walkLog = {
       id: walkId || `walk_${Date.now()}`,
-      petId: walk.petId || 'p1',
+      petId,
       distanceKm: distanceKm || 1.8,
       durationSeconds: durationSeconds || 1800,
       calories: calories || 120,

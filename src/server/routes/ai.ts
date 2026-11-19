@@ -1,26 +1,27 @@
 import type { Express } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import type { AIConsultationRecord } from '../store';
+import { requirePetAccess } from '../authorization';
 import { validate } from '../validation';
 import { doctorAnalyzeBody, petIdParams, pixelCharacterizeBody } from '../schemas';
 import type { Store } from '../store';
 
 export function registerAiRoutes(app: Express, store: Store): void {
-  const { aiConsultationsDb } = store;
+  const { aiConsultationsDb, petsDb } = store;
 
   // GET /api/v1/ai/history/:petId - Get consultation history for a pet
-  app.get('/api/v1/ai/history/:petId', validate({ params: petIdParams }), (req, res) => {
+  app.get('/api/v1/ai/history/:petId', validate({ params: petIdParams }), requirePetAccess(petsDb, { from: 'params', level: 'member' }), (req, res) => {
     const { petId } = req.params;
     const records = aiConsultationsDb.filter(r => r.petId === petId);
     res.json({ success: true, count: records.length, data: records });
   });
 
   // POST /api/v1/ai/doctor-analyze - Multimodal (Text + Vision) AI Analysis
-  app.post('/api/v1/ai/doctor-analyze', validate({ body: doctorAnalyzeBody }), async (req, res) => {
+  app.post('/api/v1/ai/doctor-analyze', validate({ body: doctorAnalyzeBody }), requirePetAccess(petsDb, { from: 'body', level: 'member' }), async (req, res) => {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       const {
-        petId = 'p1',
+        petId,
         petName = '모카',
         breed = '말티푸',
         age = '2살',

@@ -97,7 +97,7 @@ export const happinessBody = z.object({ increment: z.number().int().min(1).max(1
 
 // ---------- records ----------
 export const dailyRecordBody = z.object({
-  petId: id.optional(),
+  petId: id,
   recordDate: isoDate.optional(),
   feedChecked: z.boolean().optional(),
   waterChecked: z.boolean().optional(),
@@ -107,7 +107,7 @@ export const dailyRecordBody = z.object({
 });
 
 export const healthRecordBody = z.object({
-  petId: id.optional(),
+  petId: id,
   visitDate: isoDate.optional(),
   category: z.enum(['checkup', 'vaccine', 'treatment', 'dental', 'surgery']).optional(),
   hospitalName: text(100).optional(),
@@ -120,12 +120,13 @@ export const healthRecordBody = z.object({
 
 // ---------- walks ----------
 export const startWalkBody = z.object({
-  petId: id.optional(),
+  petId: id,
   startLatitude: latitude.optional(),
   startLongitude: longitude.optional()
 });
 
 export const endWalkBody = z.object({
+  petId: id.optional(),
   walkId: id.optional(),
   distanceKm: nonNegative(1000).optional(),
   durationSeconds: z.number().int().min(0).max(7 * 24 * 3600).optional(),
@@ -148,7 +149,7 @@ export const placeReviewBody = z.object({
 
 // ---------- ai ----------
 export const doctorAnalyzeBody = z.object({
-  petId: id.optional(),
+  petId: id,
   petName: text(30).optional(),
   breed: text(50).optional(),
   age: text(20).optional(),

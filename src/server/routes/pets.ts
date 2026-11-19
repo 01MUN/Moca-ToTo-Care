@@ -1,18 +1,23 @@
 import type { Express } from 'express';
 import { getAuthUser } from '../auth';
+import { accessiblePetIds, requirePetAccess } from '../authorization';
 import { validate } from '../validation';
 import { createPetBody, happinessBody, petIdParams, updatePetBody } from '../schemas';
 import type { Store } from '../store';
 
-export function registerPetRoutes(app: Express, store: Store): void {
-  const { petsDb } = store;
+type Pet = Store['petsDb'][number];
 
-  // GET /api/v1/pets - Get user's pets (owned + co-parenting)
+export function registerPetRoutes(app: Express, store: Store): void {
+  const { petsDb, usersDb, familyInvitesDb } = store;
+  const memberOfPet = requirePetAccess(petsDb, { from: 'params', level: 'member' });
+  const ownerOfPet = requirePetAccess(petsDb, { from: 'params', level: 'owner' });
+
+  // GET /api/v1/pets - Get user's pets (owned + co-parenting). Never falls back
+  // to other users' pets: a user without pets gets an empty list.
   app.get('/api/v1/pets', (req, res) => {
-    const user = getAuthUser(res);
-    const userPetIds = [...user.ownedPetIds, ...user.sharedPetIds];
-    const userPets = petsDb.filter(p => userPetIds.includes(p.id));
-    res.json({ success: true, count: userPets.length, data: userPets.length > 0 ? userPets : petsDb.slice(0, 2) });
+    const ids = accessiblePetIds(getAuthUser(res));
+    const userPets = petsDb.filter(p => ids.has(p.id));
+    res.json({ success: true, count: userPets.length, data: userPets });
   });
 
   // POST /api/v1/pets - Register new pet
@@ -36,23 +41,33 @@ export function registerPetRoutes(app: Express, store: Store): void {
     res.status(201).json({ success: true, data: newPet });
   });
 
-  // PATCH /api/v1/pets/:petId - Update pet profile & theme
-  app.patch('/api/v1/pets/:petId', validate({ params: petIdParams, body: updatePetBody }), (req, res) => {
-    const { petId } = req.params;
-    const petIndex = petsDb.findIndex(p => p.id === petId);
-    if (petIndex === -1) {
-      return res.status(404).json({ success: false, message: 'Pet not found' });
-    }
+  // PATCH /api/v1/pets/:petId - Update pet profile & theme (owner only)
+  app.patch('/api/v1/pets/:petId', validate({ params: petIdParams, body: updatePetBody }), ownerOfPet, (req, res) => {
+    const pet = res.locals.pet as Pet;
+    const petIndex = petsDb.findIndex(p => p.id === pet.id);
     petsDb[petIndex] = { ...petsDb[petIndex], ...req.body };
     res.json({ success: true, data: petsDb[petIndex] });
+  });
+
+  // DELETE /api/v1/pets/:petId - Remove a pet (owner only). Detaches it from
+  // every user and drops its pending family invites.
+  app.delete('/api/v1/pets/:petId', validate({ params: petIdParams }), ownerOfPet, (req, res) => {
+    const pet = res.locals.pet as Pet;
+    petsDb.splice(petsDb.findIndex(p => p.id === pet.id), 1);
+    for (const user of usersDb) {
+      user.ownedPetIds = user.ownedPetIds.filter(id => id !== pet.id);
+      user.sharedPetIds = user.sharedPetIds.filter(id => id !== pet.id);
+    }
+    const remainingInvites = familyInvitesDb.filter(i => i.petId !== pet.id);
+    familyInvitesDb.splice(0, familyInvitesDb.length, ...remainingInvites);
+    res.json({ success: true, message: `'${pet.name}' 프로필이 삭제되었습니다.`, data: { id: pet.id } });
   });
 
   // ==========================================
   // [v1 API] Home Dashboard & Happiness State
   // ==========================================
-  app.get('/api/v1/pets/:petId/dashboard', validate({ params: petIdParams }), (req, res) => {
-    const { petId } = req.params;
-    const pet = petsDb.find(p => p.id === petId) || petsDb[0];
+  app.get('/api/v1/pets/:petId/dashboard', validate({ params: petIdParams }), memberOfPet, (req, res) => {
+    const pet = res.locals.pet as Pet;
     res.json({
       success: true,
       data: {
@@ -73,12 +88,9 @@ export function registerPetRoutes(app: Express, store: Store): void {
   });
 
   // POST /api/v1/pets/:petId/happiness - Update pet touch interaction happiness
-  app.post('/api/v1/pets/:petId/happiness', validate({ params: petIdParams, body: happinessBody }), (req, res) => {
-    const { petId } = req.params;
+  app.post('/api/v1/pets/:petId/happiness', validate({ params: petIdParams, body: happinessBody }), memberOfPet, (req, res) => {
+    const pet = res.locals.pet as Pet;
     const { increment = 5 } = req.body;
-    const pet = petsDb.find(p => p.id === petId);
-    if (!pet) return res.status(404).json({ success: false, message: 'Pet not found' });
-
     pet.happiness = Math.min(100, pet.happiness + increment);
     res.json({ success: true, happiness: pet.happiness, message: `${pet.name}의 행복도가 상승했습니다! 💕` });
   });
