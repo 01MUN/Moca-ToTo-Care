@@ -149,6 +149,89 @@ async function openRecordsTab() {
   fireEvent.click(await screen.findByRole('button', { name: '건강 & 병원 기록' }));
 }
 
+describe('user without pets', () => {
+  const DEMO_PET_NAMES = ['모카', '토토'];
+
+  async function startAsUserWithoutPets() {
+    authStorage.setToken('token-ua');
+    api.getMe.mockResolvedValue({ user: USER_A, managedPets: [] });
+    api.getHealthRecords.mockResolvedValue([]);
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /플러피 데이즈 시작하기/ }));
+    await screen.findByText('첫 반려동물 등록');
+  }
+
+  it('shows a first-pet screen instead of demo pets', async () => {
+    await startAsUserWithoutPets();
+    for (const name of DEMO_PET_NAMES) expect(screen.queryByText(new RegExp(name))).toBeNull();
+    expect(screen.queryByText('오늘의 요약 카드')).toBeNull();
+  });
+
+  it('registers the first pet and then shows it', async () => {
+    await startAsUserWithoutPets();
+    api.createPet.mockResolvedValue(PET_B);
+    fireEvent.change(screen.getByLabelText('이름'), { target: { value: PET_B.name } });
+    fireEvent.click(screen.getByRole('button', { name: '등록하기' }));
+
+    await screen.findAllByText(PET_B.name);
+    expect(api.createPet).toHaveBeenCalledWith(expect.objectContaining({ name: PET_B.name }));
+    expect(screen.queryByText('첫 반려동물 등록')).toBeNull();
+  });
+
+  it('lets a co-parent join with an invite code from the empty screen', async () => {
+    await startAsUserWithoutPets();
+    api.joinFamily.mockResolvedValue({ pet: PET_B, sharedPetIds: [PET_B.id] });
+    fireEvent.change(screen.getByLabelText('초대 코드'), { target: { value: 'K7QW-M3ZP-X9RD' } });
+    fireEvent.click(screen.getByRole('button', { name: '참여하기' }));
+
+    await screen.findAllByText(PET_B.name);
+    expect(api.joinFamily).toHaveBeenCalledWith('K7QW-M3ZP-X9RD');
+  });
+
+  it('can still log out from the empty screen', async () => {
+    await startAsUserWithoutPets();
+    fireEvent.click(screen.getByRole('button', { name: /로그아웃/ }));
+    expect(await screen.findByText('보호자 계정 로그인')).toBeTruthy();
+    expect(authStorage.getToken()).toBeNull();
+  });
+});
+
+describe('signup as a family co-parent', () => {
+  it('uses the invite code entered at signup to join the shared pet', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /플러피 데이즈 시작하기/ }));
+    await screen.findByText('보호자 계정 로그인');
+
+    api.signup.mockImplementation(async () => {
+      authStorage.setToken('token-ub');
+      return { token: 'token-ub', user: USER_B, managedPets: [] };
+    });
+    api.joinFamily.mockResolvedValue({ pet: PET_A, sharedPetIds: [PET_A.id] });
+    api.getHealthRecords.mockResolvedValue([]);
+
+    fireEvent.click(screen.getByRole('button', { name: /신규 가입/ }));
+    fireEvent.change(screen.getByPlaceholderText('user@example.com'), { target: { value: 'ub@pet.com' } });
+    fireEvent.change(screen.getByPlaceholderText('비밀번호 (8자 이상)'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByPlaceholderText('예: 초코언니, 뽀삐아빠'), { target: { value: '비집사' } });
+    fireEvent.click(screen.getByRole('button', { name: /가족 공동 양육자/ }));
+    fireEvent.change(screen.getByLabelText('받은 초대 코드'), { target: { value: 'K7QW-M3ZP-X9RD' } });
+    fireEvent.click(screen.getByRole('button', { name: '회원가입 완료' }));
+
+    await screen.findAllByText(PET_A.name, {}, { timeout: 3000 });
+    expect(api.signup).toHaveBeenCalledWith('ub@pet.com', 'password123', '비집사');
+    expect(api.joinFamily).toHaveBeenCalledWith('K7QW-M3ZP-X9RD');
+  });
+
+  it('requires an invite code when the co-parent option is chosen', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /플러피 데이즈 시작하기/ }));
+    await screen.findByText('보호자 계정 로그인');
+    fireEvent.click(screen.getByRole('button', { name: /신규 가입/ }));
+    fireEvent.click(screen.getByRole('button', { name: /가족 공동 양육자/ }));
+    expect((screen.getByLabelText('받은 초대 코드') as HTMLInputElement).required).toBe(true);
+  });
+});
+
 describe('logout', () => {
   it('has a logout button that clears the token and shows the login screen', async () => {
     await startLoggedInAsA();

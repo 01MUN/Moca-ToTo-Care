@@ -2,6 +2,15 @@ import { PetProfile, RecordItem, HealthRecord, WalkSession, CommunityPlace, User
 import { INITIAL_PETS, INITIAL_DAILY_RECORDS, INITIAL_HEALTH_RECORDS, INITIAL_WALK_SESSIONS, INITIAL_COMMUNITY_PLACES } from '../data/mockData';
 
 const BASE_URL = '/api/v1';
+
+export interface NewPetInput {
+  name: string;
+  breed?: string;
+  /** ISO date YYYY-MM-DD */
+  birthDate?: string;
+  /** kg */
+  weight?: number;
+}
 const AUTH_TOKEN_KEY = 'mocatoto_auth_token';
 
 // Mock-data fallback is disabled under Vitest so tests see real request failures
@@ -134,10 +143,12 @@ export const authApiService = {
     return res;
   },
 
-  async signup(email: string, password: string, nickname: string, role: string = 'owner'): Promise<AuthResponse> {
+  // New accounts are always 'owner' on the server; co-parents join a pet with
+  // an invite code afterwards (joinFamily), so no role is sent.
+  async signup(email: string, password: string, nickname: string): Promise<AuthResponse> {
     const res = await request<AuthResponse>('/auth/signup', {
       method: 'POST',
-      body: JSON.stringify({ email, password, nickname, role }),
+      body: JSON.stringify({ email, password, nickname }),
     }, undefined, { isAuthAttempt: true });
     if (res.token) {
       authStorage.setToken(res.token);
@@ -175,7 +186,8 @@ export const petApiService = {
     return request<PetProfile[]>('/pets', { method: 'GET' }, INITIAL_PETS);
   },
 
-  async createPet(pet: Partial<PetProfile>): Promise<PetProfile> {
+  // Field names follow the server's POST /pets body (src/server/schemas.ts createPetBody).
+  async createPet(pet: NewPetInput): Promise<PetProfile> {
     return request<PetProfile>('/pets', {
       method: 'POST',
       body: JSON.stringify(pet),

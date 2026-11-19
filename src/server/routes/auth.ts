@@ -3,6 +3,7 @@ import type { Express, Response } from 'express';
 import type { UserRecord, FamilyInviteRecord } from '../store';
 import { getAuthUser } from '../auth';
 import { requirePetAccess } from '../authorization';
+import { toPetProfile } from '../petProfile';
 import { INVITE_TTL_MS, generateInviteCode, normalizeInviteCode } from '../inviteCode';
 import { signAccessToken } from '../jwt';
 import { hashPassword, verifyPassword } from '../password';
@@ -51,7 +52,7 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
     const token = issueToken(res, user.id);
     if (!token) return;
     const userPetIds = [...user.ownedPetIds, ...user.sharedPetIds];
-    const managedPets = petsDb.filter(p => userPetIds.includes(p.id));
+    const managedPets = petsDb.filter(p => userPetIds.includes(p.id)).map(p => toPetProfile(p));
 
     res.json({
       success: true,
@@ -136,7 +137,7 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
   app.get('/api/v1/auth/me', (req, res) => {
     const user = getAuthUser(res);
     const userPetIds = [...user.ownedPetIds, ...user.sharedPetIds];
-    const managedPets = petsDb.filter(p => userPetIds.includes(p.id));
+    const managedPets = petsDb.filter(p => userPetIds.includes(p.id)).map(p => toPetProfile(p));
 
     res.json({
       success: true,
@@ -208,7 +209,7 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
       success: true,
       message: `'${invite.inviterName}'님의 '${invite.petName}' 공동 양육자로 등록되었습니다! 🎉`,
       data: {
-        pet,
+        pet: toPetProfile(pet),
         sharedPetIds: user.sharedPetIds
       }
     });

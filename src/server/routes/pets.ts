@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import { getAuthUser } from '../auth';
 import { accessiblePetIds, requirePetAccess } from '../authorization';
+import { toPetProfile } from '../petProfile';
 import { validate } from '../validation';
 import { createPetBody, happinessBody, petIdParams, updatePetBody } from '../schemas';
 import type { Store } from '../store';
@@ -17,7 +18,7 @@ export function registerPetRoutes(app: Express, store: Store): void {
   app.get('/api/v1/pets', (req, res) => {
     const ids = accessiblePetIds(getAuthUser(res));
     const userPets = petsDb.filter(p => ids.has(p.id));
-    res.json({ success: true, count: userPets.length, data: userPets });
+    res.json({ success: true, count: userPets.length, data: userPets.map(p => toPetProfile(p)) });
   });
 
   // POST /api/v1/pets - Register new pet
@@ -38,7 +39,7 @@ export function registerPetRoutes(app: Express, store: Store): void {
     };
     petsDb.push(newPet);
     user.ownedPetIds.push(newPet.id);
-    res.status(201).json({ success: true, data: newPet });
+    res.status(201).json({ success: true, data: toPetProfile(newPet) });
   });
 
   // PATCH /api/v1/pets/:petId - Update pet profile & theme (owner only)
@@ -46,7 +47,7 @@ export function registerPetRoutes(app: Express, store: Store): void {
     const pet = res.locals.pet as Pet;
     const petIndex = petsDb.findIndex(p => p.id === pet.id);
     petsDb[petIndex] = { ...petsDb[petIndex], ...req.body };
-    res.json({ success: true, data: petsDb[petIndex] });
+    res.json({ success: true, data: toPetProfile(petsDb[petIndex]) });
   });
 
   // DELETE /api/v1/pets/:petId - Remove a pet (owner only). Detaches it from
@@ -71,7 +72,7 @@ export function registerPetRoutes(app: Express, store: Store): void {
     res.json({
       success: true,
       data: {
-        pet,
+        pet: toPetProfile(pet),
         careScore: 95,
         todaySummary: {
           walkDistanceKm: 2.4,

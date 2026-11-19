@@ -18,6 +18,7 @@ import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { AIInteractionModal } from './components/AIInteractionModal';
 import { PixelPetModal } from './components/PixelPetModal';
 import { AuthModal } from './components/AuthModal';
+import { FirstPetSetup } from './components/FirstPetSetup';
 import { FamilyShareModal } from './components/FamilyShareModal';
 import { MobileFrameWrapper } from './components/MobileFrameWrapper';
 import { FlutterCodeViewerModal } from './components/FlutterCodeViewerModal';
@@ -311,7 +312,12 @@ export default function App() {
           </div>
         )}
 
-        {!showSplash && authStatus === 'authenticated' && (
+        {/* Logged in but no pets yet: onboarding instead of demo data */}
+        {!showSplash && authStatus === 'authenticated' && currentUser && pets.length === 0 && (
+          <FirstPetSetup currentUser={currentUser} onPetReady={handleJoinFamilySuccess} onLogout={handleLogout} />
+        )}
+
+        {!showSplash && authStatus === 'authenticated' && pets.length > 0 && (
           <div className="flex flex-col min-h-full">
             {/* Top Backend Sync Status Bar */}
             <div className="bg-emerald-800 text-emerald-100 px-4 py-1 text-[11px] flex items-center justify-between font-medium">

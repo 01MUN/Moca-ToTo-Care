@@ -85,6 +85,36 @@ describe('health records keep the date and weight after reload', () => {
   });
 });
 
+describe('pet profiles use the client PetProfile fields', () => {
+  it('returns weightKg, birthday and age for listed pets', async () => {
+    const list = await as('u1')('GET', '/pets');
+    const moca = list.json.data.find((p: { id: string }) => p.id === 'p1');
+    expect(moca).toMatchObject({ id: 'p1', name: '모카', weightKg: 3.8, birthday: '2022.05.15' });
+    expect(typeof moca.age).toBe('string');
+    expect(moca.age.length).toBeGreaterThan(0);
+  });
+
+  it('a newly registered pet comes back with the values the user entered', async () => {
+    const owner = as('u3');
+    const created = await owner('POST', '/pets', { name: '새친구', breed: '포메라니안', birthDate: '2024-03-01', weight: 4.2 });
+    expect(created.status).toBe(201);
+    expect(created.json.data).toMatchObject({ name: '새친구', breed: '포메라니안', weightKg: 4.2, birthday: '2024.03.01' });
+
+    const list = await owner('GET', '/pets');
+    expect(list.json.data.find((p: { id: string }) => p.id === created.json.data.id)).toMatchObject({ weightKg: 4.2 });
+  });
+
+  it('includes client fields in the pets returned at login', async () => {
+    const res = await fetch(`${server.baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'moca_mom@toto.com', password: 'password123' })
+    });
+    const pets = (await res.json()).data.managedPets;
+    expect(pets[0]).toMatchObject({ weightKg: expect.any(Number), birthday: expect.any(String) });
+  });
+});
+
 const clientWalkSession = {
   id: 'walk-1763500000000',
   date: '방금 전 (오늘)',
