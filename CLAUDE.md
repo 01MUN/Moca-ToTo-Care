@@ -17,7 +17,7 @@ Content and UI copy are primarily in **Korean**.
 - **Data layer**: `prisma/schema.prisma` defines a PostgreSQL + PostGIS schema (Users, Pets, DailyRecord, HealthRecord, WalkLog, Place, PlaceReview), and `src/db/schema.sql` mirrors it as raw SQL — **but `server.ts` currently uses in-memory arrays (`usersDb`, `familyInvitesDb`, etc.), not Prisma/Postgres**. Treat the Prisma schema as the target/aspirational persistence model, not the live one (확인 필요: whether a Prisma client is wired up anywhere, or if this is future work — no `@prisma/client` import was found).
 - **API contract**: `docs/openapi.yaml` documents the intended `/api/v1/*` REST surface.
 - **Build**: `vite build` for the client bundle + `esbuild` to bundle `server.ts` into `dist/server.cjs` (CJS, Node platform, external packages).
-- **Package manager**: `bun.lock` is present (Bun), but `package.json` scripts assume Node-compatible tooling (`tsx`, `node`). 확인 필요: whether Bun or npm/Node is the intended runtime — README says `npm install` / `npm run dev`, but the lockfile is Bun's.
+- **Package manager**: npm 사용 확정. `package-lock.json` is the single source of truth; `bun.lock` was a stray artifact and has been removed.
 
 ## Project Structure
 
@@ -59,7 +59,7 @@ docs/openapi.yaml        REST API specification
 ## Commands
 
 ```bash
-npm install       # install dependencies (README-documented; bun.lock also present — see 확인 필요 above)
+npm install       # install dependencies (npm is the confirmed package manager)
 npm run dev        # tsx server.ts — starts Express + Vite middleware dev server on port 3000
 npm run build       # vite build (client) + esbuild bundle of server.ts -> dist/server.cjs
 npm run start       # node dist/server.cjs — run the production build
