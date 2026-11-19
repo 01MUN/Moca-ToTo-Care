@@ -40,12 +40,15 @@ export interface AIConsultationRecord {
   createdAt: string;
 }
 
+// bcrypt hash of the demo password "password123" shared by the seeded demo accounts.
+const SEED_PASSWORD_HASH = '$2b$10$G07dPzBHw0SA1soYQSQy1OIPxj0SgeV5Dl8yAKkfr6MN7TtrsXosO';
+
 export function createStore() {
   const usersDb: UserRecord[] = [
     {
       id: 'u1',
       email: 'moca_mom@toto.com',
-      passwordHash: 'password123',
+      passwordHash: SEED_PASSWORD_HASH,
       nickname: '모카맘 (대표 보호자)',
       role: 'owner',
       avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
@@ -56,7 +59,7 @@ export function createStore() {
     {
       id: 'u2',
       email: 'moca_dad@toto.com',
-      passwordHash: 'password123',
+      passwordHash: SEED_PASSWORD_HASH,
       nickname: '모카아빠 (공동 양육자)',
       role: 'co_parent',
       avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
@@ -67,7 +70,7 @@ export function createStore() {
     {
       id: 'u3',
       email: 'coco_dad@pet.com',
-      passwordHash: 'password123',
+      passwordHash: SEED_PASSWORD_HASH,
       nickname: '코코아빠 (단독 보호자)',
       role: 'owner',
       avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',

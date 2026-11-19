@@ -3,11 +3,14 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { createApp } from './src/server/app';
+import { loadJwtSecret } from './src/server/jwt';
 
 dotenv.config();
 
 async function startServer() {
-  const app = createApp();
+  // Fail fast: never serve the API without a valid signing key.
+  const jwtSecret = loadJwtSecret();
+  const app = createApp({ jwtSecret });
   const PORT = 3000;
 
   // Vite middleware for development
@@ -32,4 +35,5 @@ async function startServer() {
 
 startServer().catch((err) => {
   console.error('Failed to start server:', err);
+  process.exitCode = 1;
 });

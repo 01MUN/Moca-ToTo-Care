@@ -1,24 +1,37 @@
 import type { Express } from 'express';
 import type { UserRecord, FamilyInviteRecord } from '../store';
-import { getAuthUser as getAuthUserFrom } from '../auth';
+import { getAuthUser } from '../auth';
+import { signAccessToken } from '../jwt';
+import { hashPassword, verifyPassword } from '../password';
 import type { Store } from '../store';
 
-export function registerAuthRoutes(app: Express, store: Store): void {
+// Fixed bcrypt hash compared against when the email is unknown (timing equalization).
+const TIMING_DUMMY_HASH = '$2b$10$G07dPzBHw0SA1soYQSQy1OIPxj0SgeV5Dl8yAKkfr6MN7TtrsXosO';
+
+export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string): void {
   const { usersDb, familyInvitesDb, petsDb } = store;
-  const getAuthUser = (req: Parameters<typeof getAuthUserFrom>[1]) => getAuthUserFrom(usersDb, req);
 
   // ==========================================
   // [v1 API] Auth Endpoints
   // ==========================================
   // POST /api/v1/auth/login
-  app.post('/api/v1/auth/login', (req, res) => {
+  app.post('/api/v1/auth/login', async (req, res) => {
     const { email, password } = req.body;
-    const user = usersDb.find(u => u.email === email && u.passwordHash === password);
+    let user: UserRecord | undefined;
+    try {
+      const candidate = usersDb.find(u => u.email === email);
+      // Always run a bcrypt compare so unknown emails take as long as wrong passwords.
+      const passwordOk = await verifyPassword(String(password ?? ''), candidate?.passwordHash ?? TIMING_DUMMY_HASH);
+      user = candidate && passwordOk ? candidate : undefined;
+    } catch (err) {
+      console.error('Login error:', err);
+      return res.status(500).json({ success: false, message: '로그인 처리 중 오류가 발생했습니다.' });
+    }
     if (!user) {
       return res.status(401).json({ success: false, message: '이메일 또는 비밀번호가 일치하지 않습니다.' });
     }
 
-    const token = `token_${user.id}_${Date.now()}`;
+    const token = signAccessToken(user.id, jwtSecret);
     const userPetIds = [...user.ownedPetIds, ...user.sharedPetIds];
     const managedPets = petsDb.filter(p => userPetIds.includes(p.id));
 
@@ -42,21 +55,33 @@ export function registerAuthRoutes(app: Express, store: Store): void {
   });
 
   // POST /api/v1/auth/signup
-  app.post('/api/v1/auth/signup', (req, res) => {
+  app.post('/api/v1/auth/signup', async (req, res) => {
     const { email, password, nickname, role = 'owner' } = req.body;
     if (!email || !password || !nickname) {
       return res.status(400).json({ success: false, message: '필수 회원 정보를 모두 입력해주세요.' });
     }
 
-    const existing = usersDb.find(u => u.email === email);
-    if (existing) {
-      return res.status(409).json({ success: false, message: '이미 가입된 이메일 주소입니다.' });
+    const duplicateMessage = '이미 가입된 이메일 주소입니다.';
+    if (usersDb.some(u => u.email === email)) {
+      return res.status(409).json({ success: false, message: duplicateMessage });
+    }
+
+    let passwordHash: string;
+    try {
+      passwordHash = await hashPassword(String(password));
+    } catch (err) {
+      console.error('Signup password hashing error:', err);
+      return res.status(500).json({ success: false, message: '회원가입 처리 중 오류가 발생했습니다.' });
+    }
+    // Re-check after the async hash: a concurrent signup may have taken the email.
+    if (usersDb.some(u => u.email === email)) {
+      return res.status(409).json({ success: false, message: duplicateMessage });
     }
 
     const newUser: UserRecord = {
       id: `u${Date.now()}`,
       email,
-      passwordHash: password,
+      passwordHash,
       nickname,
       role: role as any,
       avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(nickname)}`,
@@ -66,7 +91,7 @@ export function registerAuthRoutes(app: Express, store: Store): void {
     };
 
     usersDb.push(newUser);
-    const token = `token_${newUser.id}_${Date.now()}`;
+    const token = signAccessToken(newUser.id, jwtSecret);
 
     res.status(201).json({
       success: true,
@@ -89,7 +114,7 @@ export function registerAuthRoutes(app: Express, store: Store): void {
 
   // GET /api/v1/auth/me
   app.get('/api/v1/auth/me', (req, res) => {
-    const user = getAuthUser(req);
+    const user = getAuthUser(res);
     const userPetIds = [...user.ownedPetIds, ...user.sharedPetIds];
     const managedPets = petsDb.filter(p => userPetIds.includes(p.id));
 
@@ -112,7 +137,7 @@ export function registerAuthRoutes(app: Express, store: Store): void {
 
   // POST /api/v1/auth/family/invite - Create co-parenting invite code
   app.post('/api/v1/auth/family/invite', (req, res) => {
-    const user = getAuthUser(req);
+    const user = getAuthUser(res);
     const { petId } = req.body;
     const pet = petsDb.find(p => p.id === petId);
     if (!pet) return res.status(404).json({ success: false, message: '반려동물을 찾을 수 없습니다.' });
@@ -137,7 +162,7 @@ export function registerAuthRoutes(app: Express, store: Store): void {
 
   // POST /api/v1/auth/family/join - Join pet co-parenting using invite code
   app.post('/api/v1/auth/family/join', (req, res) => {
-    const user = getAuthUser(req);
+    const user = getAuthUser(res);
     const { inviteCode } = req.body;
     const invite = familyInvitesDb.find(i => i.inviteCode.toUpperCase() === inviteCode?.trim().toUpperCase());
 

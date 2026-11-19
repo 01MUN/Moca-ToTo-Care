@@ -1,4 +1,5 @@
 import type { Express } from 'express';
+import { getAuthUser } from '../auth';
 import type { Store } from '../store';
 
 export function registerPlaceRoutes(app: Express, store: Store): void {
@@ -24,7 +25,7 @@ export function registerPlaceRoutes(app: Express, store: Store): void {
     const newReview = {
       id: `rev_${Date.now()}`,
       placeId: req.params.placeId,
-      userId: 'u1',
+      userId: getAuthUser(res).id,
       rating: rating || 5,
       content: content || '선생님들이 너무 친절하셨어요!',
       tags: tags || ['친절해요'],

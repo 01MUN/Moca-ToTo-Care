@@ -1,14 +1,13 @@
 import type { Express } from 'express';
-import { getAuthUser as getAuthUserFrom } from '../auth';
+import { getAuthUser } from '../auth';
 import type { Store } from '../store';
 
 export function registerPetRoutes(app: Express, store: Store): void {
-  const { usersDb, petsDb } = store;
-  const getAuthUser = (req: Parameters<typeof getAuthUserFrom>[1]) => getAuthUserFrom(usersDb, req);
+  const { petsDb } = store;
 
   // GET /api/v1/pets - Get user's pets (owned + co-parenting)
   app.get('/api/v1/pets', (req, res) => {
-    const user = getAuthUser(req);
+    const user = getAuthUser(res);
     const userPetIds = [...user.ownedPetIds, ...user.sharedPetIds];
     const userPets = petsDb.filter(p => userPetIds.includes(p.id));
     res.json({ success: true, count: userPets.length, data: userPets.length > 0 ? userPets : petsDb.slice(0, 2) });
@@ -16,7 +15,7 @@ export function registerPetRoutes(app: Express, store: Store): void {
 
   // POST /api/v1/pets - Register new pet
   app.post('/api/v1/pets', (req, res) => {
-    const user = getAuthUser(req);
+    const user = getAuthUser(res);
     const { name, breed, birthDate, weight, traits, avatarUrl, currentTheme } = req.body;
     const newPet = {
       id: `p${Date.now()}`,
