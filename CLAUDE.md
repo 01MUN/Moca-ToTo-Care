@@ -54,7 +54,7 @@ docs/openapi.yaml        REST API specification
 - Styling is Tailwind utility classes, often with inline hex colors (e.g. `bg-[#181825]`, `text-[#3D2C1E]`) rather than a themed Tailwind config — color values are hardcoded per-component/per-theme (see `ThemeOption` in `types.ts` and `THEME_OPTIONS`).
 - Domain types are centralized in `src/types.ts` and imported by both components and `services/api.ts`.
 - UI copy/strings are written in Korean directly inline (no i18n layer).
-- 확인 필요: no test files or test framework were found in the repo — there is no test command.
+- **테스트**: Vitest, `npm test` (config in `vitest.config.ts`, separate from `vite.config.ts`). `src/services/api.ts`'s mock-data fallback is disabled when `VITEST`/`NODE_ENV=test` is set, so tests see real thrown errors instead of silent fallback data.
 
 ## Commands
 
@@ -65,9 +65,8 @@ npm run build       # vite build (client) + esbuild bundle of server.ts -> dist/
 npm run start       # node dist/server.cjs — run the production build
 npm run clean       # rm -rf dist server.cjs
 npm run lint         # tsc --noEmit (type-checking only; no ESLint)
+npm test             # vitest run
 ```
-
-There is no test script/framework configured (확인 필요 if tests are planned).
 
 ### Environment
 
