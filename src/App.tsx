@@ -114,12 +114,14 @@ export default function App() {
   async function loadProtectedData() {
     setIsSyncing(true);
     try {
-      const [backendDaily, backendHealth] = await Promise.all([
+      const [backendDaily, backendHealth, backendWalks] = await Promise.all([
         petApiService.getDailyRecords(),
         petApiService.getHealthRecords(),
+        petApiService.getWalkSessions(),
       ]);
       setDailyRecords(backendDaily);
       setHealthRecords(backendHealth);
+      setWalkSessions(backendWalks);
     } catch (err) {
       if (!isUnauthorizedError(err)) console.warn('Backend sync warning:', err);
     } finally {

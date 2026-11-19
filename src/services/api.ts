@@ -223,6 +223,13 @@ export const petApiService = {
   },
 
   // 3. Walks & Shapeify
+  // Saved walk history (newest first). No mock fallback: an empty history is
+  // better than showing demo walks as if they were the user's.
+  async getWalkSessions(petId?: string): Promise<WalkSession[]> {
+    const query = petId ? `?petId=${encodeURIComponent(petId)}` : '';
+    return request<WalkSession[]>(`/walks${query}`, { method: 'GET' });
+  },
+
   async startWalk(petId: string, coords?: { lat: number; lng: number }): Promise<{ walkId: string }> {
     return request<{ walkId: string }>('/walks/start', {
       method: 'POST',

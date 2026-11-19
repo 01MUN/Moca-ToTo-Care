@@ -81,6 +81,20 @@ describe('401 handling', () => {
   });
 });
 
+describe('walk history', () => {
+  it('loads saved walks from GET /walks (optionally for one pet)', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { success: true, data: [{ id: 'walk-1', durationMinutes: 37 }] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const walks = await petApiService.getWalkSessions('p1');
+    expect(walks).toEqual([{ id: 'walk-1', durationMinutes: 37 }]);
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/walks?petId=p1', expect.objectContaining({ method: 'GET' }));
+
+    await petApiService.getWalkSessions();
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/walks', expect.objectContaining({ method: 'GET' }));
+  });
+});
+
 describe('resolveRequestFailure (mock-data fallback)', () => {
   it('never swallows a 401 with mock data, even when fallback is enabled', () => {
     expect(() => resolveRequestFailure(new UnauthorizedError(), INITIAL_PETS, true)).toThrow(UnauthorizedError);
