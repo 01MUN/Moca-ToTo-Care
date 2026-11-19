@@ -87,8 +87,21 @@ paths:
           description: 반려동물 생성 완료
 
   /pets/{petId}:
+    delete:
+      summary: 반려동물 삭제 (대표 보호자만)
+      operationId: deletePet
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: "삭제 완료. 모든 사용자의 owned/shared 목록과 대기 중 초대 코드에서도 제거" }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/PetNotFound' }
     patch:
-      summary: 반려동물 프로필 및 테마 수정
+      summary: 반려동물 프로필 및 테마 수정 (대표 보호자만, 공동 양육자는 403)
       operationId: updatePet
       parameters:
         - name: petId
@@ -283,6 +296,16 @@ components:
                   message: { type: string }
 
   responses:
+    PetNotFound:
+      description: "반려동물이 없거나 요청자의 반려동물이 아님 (존재 여부를 숨기기 위해 두 경우 모두 동일한 404). petId를 받는 모든 API에 적용"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: "공동 양육자가 대표 보호자 전용 작업(프로필 수정, 삭제, 초대 코드 발급)을 시도"
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     BadRequest:
       description: "입력값 검증 실패 또는 잘못된 JSON 본문 (본문 최대 10MB, 초과 시 413)"
       content:

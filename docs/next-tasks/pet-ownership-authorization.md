@@ -1,5 +1,9 @@
 # 다음 작업: 반려동물 소유권(인가) 검사
 
+> **상태 (2026-11-19): 소유권 검사 완료.** `feat/pet-ownership`에서 구현했습니다 (`src/server/authorization.ts`, 테스트 `src/server/ownership.test.ts`).
+> 아래 "검사가 필요한 라우트" 표는 모두 처리되었습니다. 단, `family/join`의 초대 코드 만료와 추측 가능한 코드 형식은 아직 남아 있습니다.
+> 남은 작업은 "이번 작업 중 발견한 기존 문제", "보안 리뷰에서 남은 LOW 항목", 맨 아래 "코드 리뷰 MEDIUM 이하"입니다.
+
 > 다음 세션에서 이렇게 시작하면 됩니다:
 > `/ecc:plan docs/next-tasks/pet-ownership-authorization.md`
 >
@@ -49,3 +53,17 @@ MEDIUM(사용자 ID 충돌, 지금은 `u_<uuid>`로 해결), 공개 auth 라우�
 - **회원가입으로 이메일 존재 여부 노출**: 이미 가입된 이메일이면 409를 bcrypt 없이 바로 반환합니다(상태 코드와 응답 시간 차이). 일반적으로 감수하는 트레이드오프이지만, 줄이려면 해싱을 중복 확인보다 먼저 하거나 이메일 인증 흐름을 도입합니다.
 - **AI 라우트 500 응답이 내부 메시지를 노출**: `src/server/routes/ai.ts`가 `error: err.message`(Gemini SDK 에러)를 그대로 반환합니다. 고정 메시지와 `message` 필드로 바꾸고, 상세 내용은 서버 로그에만 남깁니다.
 - **JWT_SECRET 강도는 길이로만 검사**: `aaaa…`(32자)도 통과합니다. 최소 엔트로피(고유 문자 수 등) 검사를 추가할지 검토합니다.
+
+## 코드 리뷰 MEDIUM 이하 (2026-11-19 code-reviewer, feat/jwt-auth-validation 대상)
+
+CRITICAL/HIGH는 없었습니다. 아래는 고치지 않고 목록만 남깁니다.
+
+| 심각도 | 위치 | 내용 | 제안 |
+|---|---|---|---|
+| MEDIUM | `src/App.tsx` `applySession` | 계정이 바뀌어도(401 후 재로그인) 이전 사용자의 `pets`/기록/`currentPetId`가 화면에 남음. 로그아웃 UI도 없음 | 401과 로그인 시 상태 초기화, 로그아웃 버튼 추가 |
+| MEDIUM | `src/services/api.ts` `handleSessionExpired` | 옛 토큰으로 보낸 요청의 늦은 401이 새로 로그인한 토큰까지 지움 | 요청 시점 토큰과 현재 토큰이 같을 때만 세션 만료 처리 |
+| MEDIUM | `src/server/app.ts` | 로그인 사용자가 없는 `/api/v1/*` 경로를 호출하면 JSON이 아닌 HTML 404(운영에선 index.html 200) | `/api/v1` JSON 404 핸들러 추가 |
+| MEDIUM | 테스트 | `App.tsx` 로그인 게이트/세션 만료 전환에 대한 UI 테스트 없음 | jsdom + Testing Library 테스트 |
+| LOW | `src/components/AuthModal.tsx` | 로그인 성공 후 500ms `setTimeout`에 정리(cleanup) 없음 | `onLoginSuccess` 즉시 호출 |
+| LOW | `src/services/api.ts` `signup` | 서버가 무시하는 `role`을 계속 전송 | 시그니처에서 제거 |
+| LOW | `src/services/api.ts` | 401 메시지를 서버 문구로 덮어씀 (현재 동일 문구라 무해) | — |
