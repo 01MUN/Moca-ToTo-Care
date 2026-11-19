@@ -1,5 +1,7 @@
 import type { Express } from 'express';
 import { getAuthUser } from '../auth';
+import { validate } from '../validation';
+import { createPetBody, happinessBody, petIdParams, updatePetBody } from '../schemas';
 import type { Store } from '../store';
 
 export function registerPetRoutes(app: Express, store: Store): void {
@@ -14,7 +16,7 @@ export function registerPetRoutes(app: Express, store: Store): void {
   });
 
   // POST /api/v1/pets - Register new pet
-  app.post('/api/v1/pets', (req, res) => {
+  app.post('/api/v1/pets', validate({ body: createPetBody }), (req, res) => {
     const user = getAuthUser(res);
     const { name, breed, birthDate, weight, traits, avatarUrl, currentTheme } = req.body;
     const newPet = {
@@ -35,7 +37,7 @@ export function registerPetRoutes(app: Express, store: Store): void {
   });
 
   // PATCH /api/v1/pets/:petId - Update pet profile & theme
-  app.patch('/api/v1/pets/:petId', (req, res) => {
+  app.patch('/api/v1/pets/:petId', validate({ params: petIdParams, body: updatePetBody }), (req, res) => {
     const { petId } = req.params;
     const petIndex = petsDb.findIndex(p => p.id === petId);
     if (petIndex === -1) {
@@ -48,7 +50,7 @@ export function registerPetRoutes(app: Express, store: Store): void {
   // ==========================================
   // [v1 API] Home Dashboard & Happiness State
   // ==========================================
-  app.get('/api/v1/pets/:petId/dashboard', (req, res) => {
+  app.get('/api/v1/pets/:petId/dashboard', validate({ params: petIdParams }), (req, res) => {
     const { petId } = req.params;
     const pet = petsDb.find(p => p.id === petId) || petsDb[0];
     res.json({
@@ -71,7 +73,7 @@ export function registerPetRoutes(app: Express, store: Store): void {
   });
 
   // POST /api/v1/pets/:petId/happiness - Update pet touch interaction happiness
-  app.post('/api/v1/pets/:petId/happiness', (req, res) => {
+  app.post('/api/v1/pets/:petId/happiness', validate({ params: petIdParams, body: happinessBody }), (req, res) => {
     const { petId } = req.params;
     const { increment = 5 } = req.body;
     const pet = petsDb.find(p => p.id === petId);

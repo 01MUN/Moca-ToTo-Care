@@ -1,16 +1,18 @@
 import type { Express } from 'express';
+import { validate } from '../validation';
+import { dailyRecordBody, healthRecordBody, petIdQuery } from '../schemas';
 import type { Store } from '../store';
 
 export function registerRecordRoutes(app: Express, store: Store): void {
   const { dailyRecordsDb, healthRecordsDb } = store;
 
-  app.get('/api/v1/records/daily', (req, res) => {
+  app.get('/api/v1/records/daily', validate({ query: petIdQuery }), (req, res) => {
     const petId = req.query.petId as string;
     const filtered = petId ? dailyRecordsDb.filter(r => r.petId === petId) : dailyRecordsDb;
     res.json({ success: true, count: filtered.length, data: filtered });
   });
 
-  app.post('/api/v1/records/daily', (req, res) => {
+  app.post('/api/v1/records/daily', validate({ body: dailyRecordBody }), (req, res) => {
     const newRecord = {
       id: `r${Date.now()}`,
       petId: req.body.petId || 'p1',
@@ -25,13 +27,13 @@ export function registerRecordRoutes(app: Express, store: Store): void {
     res.status(201).json({ success: true, data: newRecord });
   });
 
-  app.get('/api/v1/records/health', (req, res) => {
+  app.get('/api/v1/records/health', validate({ query: petIdQuery }), (req, res) => {
     const petId = req.query.petId as string;
     const filtered = petId ? healthRecordsDb.filter(r => r.petId === petId) : healthRecordsDb;
     res.json({ success: true, count: filtered.length, data: filtered });
   });
 
-  app.post('/api/v1/records/health', (req, res) => {
+  app.post('/api/v1/records/health', validate({ body: healthRecordBody }), (req, res) => {
     const newRecord = {
       id: `h${Date.now()}`,
       petId: req.body.petId || 'p1',

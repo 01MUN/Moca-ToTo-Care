@@ -1,20 +1,22 @@
 import type { Express } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import type { AIConsultationRecord } from '../store';
+import { validate } from '../validation';
+import { doctorAnalyzeBody, petIdParams, pixelCharacterizeBody } from '../schemas';
 import type { Store } from '../store';
 
 export function registerAiRoutes(app: Express, store: Store): void {
   const { aiConsultationsDb } = store;
 
   // GET /api/v1/ai/history/:petId - Get consultation history for a pet
-  app.get('/api/v1/ai/history/:petId', (req, res) => {
+  app.get('/api/v1/ai/history/:petId', validate({ params: petIdParams }), (req, res) => {
     const { petId } = req.params;
     const records = aiConsultationsDb.filter(r => r.petId === petId);
     res.json({ success: true, count: records.length, data: records });
   });
 
   // POST /api/v1/ai/doctor-analyze - Multimodal (Text + Vision) AI Analysis
-  app.post('/api/v1/ai/doctor-analyze', async (req, res) => {
+  app.post('/api/v1/ai/doctor-analyze', validate({ body: doctorAnalyzeBody }), async (req, res) => {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       const {
@@ -161,7 +163,7 @@ export function registerAiRoutes(app: Express, store: Store): void {
   // ==========================================
   // [v1 API] Gemini AI Pixel Art Pet Characterizer
   // ==========================================
-  app.post('/api/v1/ai/pixel-characterize', async (req, res) => {
+  app.post('/api/v1/ai/pixel-characterize', validate({ body: pixelCharacterizeBody }), async (req, res) => {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       const {

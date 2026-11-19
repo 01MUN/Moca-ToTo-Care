@@ -1,11 +1,13 @@
 import type { Express } from 'express';
 import { getAuthUser } from '../auth';
+import { validate } from '../validation';
+import { placeIdParams, placeReviewBody, placesQuery } from '../schemas';
 import type { Store } from '../store';
 
 export function registerPlaceRoutes(app: Express, store: Store): void {
   const { placesDb } = store;
 
-  app.get('/api/v1/places/nearby', (req, res) => {
+  app.get('/api/v1/places/nearby', validate({ query: placesQuery }), (req, res) => {
     const { category } = req.query;
     let result = placesDb;
     if (category && category !== 'all') {
@@ -14,13 +16,13 @@ export function registerPlaceRoutes(app: Express, store: Store): void {
     res.json({ success: true, count: result.length, data: result });
   });
 
-  app.get('/api/v1/places/:placeId', (req, res) => {
+  app.get('/api/v1/places/:placeId', validate({ params: placeIdParams }), (req, res) => {
     const place = placesDb.find(p => p.id === req.params.placeId);
     if (!place) return res.status(404).json({ success: false, message: 'Place not found' });
     res.json({ success: true, data: place });
   });
 
-  app.post('/api/v1/places/:placeId/reviews', (req, res) => {
+  app.post('/api/v1/places/:placeId/reviews', validate({ params: placeIdParams, body: placeReviewBody }), (req, res) => {
     const { rating, content, tags } = req.body;
     const newReview = {
       id: `rev_${Date.now()}`,

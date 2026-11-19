@@ -3,6 +3,8 @@ import type { UserRecord, FamilyInviteRecord } from '../store';
 import { getAuthUser } from '../auth';
 import { signAccessToken } from '../jwt';
 import { hashPassword, verifyPassword } from '../password';
+import { validate } from '../validation';
+import { familyInviteBody, familyJoinBody, loginBody, signupBody } from '../schemas';
 import type { Store } from '../store';
 
 // Fixed bcrypt hash compared against when the email is unknown (timing equalization).
@@ -15,7 +17,7 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
   // [v1 API] Auth Endpoints
   // ==========================================
   // POST /api/v1/auth/login
-  app.post('/api/v1/auth/login', async (req, res) => {
+  app.post('/api/v1/auth/login', validate({ body: loginBody }), async (req, res) => {
     const { email, password } = req.body;
     let user: UserRecord | undefined;
     try {
@@ -55,11 +57,9 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
   });
 
   // POST /api/v1/auth/signup
-  app.post('/api/v1/auth/signup', async (req, res) => {
-    const { email, password, nickname, role = 'owner' } = req.body;
-    if (!email || !password || !nickname) {
-      return res.status(400).json({ success: false, message: '필수 회원 정보를 모두 입력해주세요.' });
-    }
+  app.post('/api/v1/auth/signup', validate({ body: signupBody }), async (req, res) => {
+    // Body is validated by signupBody; a client-supplied `role` is stripped there.
+    const { email, password, nickname } = req.body as { email: string; password: string; nickname: string };
 
     const duplicateMessage = '이미 가입된 이메일 주소입니다.';
     if (usersDb.some(u => u.email === email)) {
@@ -68,7 +68,7 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
 
     let passwordHash: string;
     try {
-      passwordHash = await hashPassword(String(password));
+      passwordHash = await hashPassword(password);
     } catch (err) {
       console.error('Signup password hashing error:', err);
       return res.status(500).json({ success: false, message: '회원가입 처리 중 오류가 발생했습니다.' });
@@ -83,7 +83,7 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
       email,
       passwordHash,
       nickname,
-      role: role as any,
+      role: 'owner',
       avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(nickname)}`,
       ownedPetIds: [],
       sharedPetIds: [],
@@ -136,7 +136,7 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
   });
 
   // POST /api/v1/auth/family/invite - Create co-parenting invite code
-  app.post('/api/v1/auth/family/invite', (req, res) => {
+  app.post('/api/v1/auth/family/invite', validate({ body: familyInviteBody }), (req, res) => {
     const user = getAuthUser(res);
     const { petId } = req.body;
     const pet = petsDb.find(p => p.id === petId);
@@ -161,7 +161,7 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
   });
 
   // POST /api/v1/auth/family/join - Join pet co-parenting using invite code
-  app.post('/api/v1/auth/family/join', (req, res) => {
+  app.post('/api/v1/auth/family/join', validate({ body: familyJoinBody }), (req, res) => {
     const user = getAuthUser(res);
     const { inviteCode } = req.body;
     const invite = familyInvitesDb.find(i => i.inviteCode.toUpperCase() === inviteCode?.trim().toUpperCase());

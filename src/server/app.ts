@@ -8,6 +8,8 @@ import { registerPlaceRoutes } from './routes/places';
 import { registerAiRoutes } from './routes/ai';
 
 import { createAuthGuard } from './auth';
+import { jsonBodyErrorHandler } from './validation';
+import { JSON_BODY_LIMIT } from './schemas';
 
 export interface CreateAppOptions {
   jwtSecret: string;
@@ -21,8 +23,11 @@ export function createApp(options: CreateAppOptions): express.Express {
   const store = options.store ?? createStore();
   const { jwtSecret } = options;
 
-  app.use(express.json());
+  // Auth runs before body parsing so unauthenticated requests are rejected
+  // without buffering up to JSON_BODY_LIMIT of payload.
   app.use('/api/v1', createAuthGuard(jwtSecret, store.usersDb));
+  app.use(express.json({ limit: JSON_BODY_LIMIT }));
+  app.use(jsonBodyErrorHandler);
 
   registerAuthRoutes(app, store, jwtSecret);
   registerPetRoutes(app, store);

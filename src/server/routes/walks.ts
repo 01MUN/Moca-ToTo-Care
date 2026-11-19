@@ -1,10 +1,12 @@
 import type { Express } from 'express';
+import { validate } from '../validation';
+import { endWalkBody, shapeifyBody, startWalkBody, walkIdParams } from '../schemas';
 import type { Store } from '../store';
 
 export function registerWalkRoutes(app: Express, store: Store): void {
   const { activeWalks } = store;
 
-  app.post('/api/v1/walks/start', (req, res) => {
+  app.post('/api/v1/walks/start', validate({ body: startWalkBody }), (req, res) => {
     const { petId, startLatitude, startLongitude } = req.body;
     const walkId = `walk_${Date.now()}`;
     activeWalks[walkId] = {
@@ -16,7 +18,7 @@ export function registerWalkRoutes(app: Express, store: Store): void {
     res.status(201).json({ success: true, walkId, message: '산책이 시작되었습니다.' });
   });
 
-  app.post('/api/v1/walks/end', (req, res) => {
+  app.post('/api/v1/walks/end', validate({ body: endWalkBody }), (req, res) => {
     const { walkId, distanceKm, durationSeconds, calories, steps, coordinates } = req.body;
     const walk = activeWalks[walkId] || { startedAt: new Date() };
 
@@ -39,7 +41,7 @@ export function registerWalkRoutes(app: Express, store: Store): void {
   });
 
   // POST /api/v1/walks/:walkId/shapeify - Shapeify Route Transformation API
-  app.post('/api/v1/walks/:walkId/shapeify', (req, res) => {
+  app.post('/api/v1/walks/:walkId/shapeify', validate({ params: walkIdParams, body: shapeifyBody }), (req, res) => {
     const { targetShape = 'paw', rawCoordinates = [] } = req.body;
     
     // Shapeify algorithm mock conversion metadata
