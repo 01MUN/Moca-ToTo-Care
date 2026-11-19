@@ -20,6 +20,9 @@ export interface FamilyInviteRecord {
   inviterId: string;
   inviterName: string;
   expiresAt: string;
+  /** Set when the code is redeemed; codes are single-use. */
+  usedAt?: string;
+  usedBy?: string;
 }
 
 export interface AIConsultationRecord {
@@ -114,16 +117,8 @@ export function createStore() {
     }
   ];
 
-  const familyInvitesDb: FamilyInviteRecord[] = [
-    {
-      inviteCode: 'MOCA-LOVE-7728',
-      petId: 'p1',
-      petName: '모카',
-      inviterId: 'u1',
-      inviterName: '모카맘',
-      expiresAt: '2026-12-31T23:59:59.000Z'
-    }
-  ];
+  // No seeded invite: codes are random, single-use and issued via POST /auth/family/invite.
+  const familyInvitesDb: FamilyInviteRecord[] = [];
 
   const petsDb = [
     {

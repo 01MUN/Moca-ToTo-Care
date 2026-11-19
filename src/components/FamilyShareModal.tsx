@@ -19,7 +19,9 @@ export function FamilyShareModal({
   currentUser,
   onJoinSuccess,
 }: FamilyShareModalProps) {
-  const [inviteCode, setInviteCode] = useState<string>('MOCA-LOVE-7728');
+  // Codes are random and single-use, so there is no default code to show.
+  const [inviteCode, setInviteCode] = useState<string>('');
+  const [inviteError, setInviteError] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [inputCode, setInputCode] = useState('');
@@ -30,17 +32,21 @@ export function FamilyShareModal({
 
   const handleGenerateNewCode = async () => {
     setIsGenerating(true);
+    setInviteError('');
     try {
       const res = await authApiService.createFamilyInvite(currentPet.id);
       setInviteCode(res.inviteCode);
-    } catch (e) {
-      setInviteCode(`${currentPet.name.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`);
+    } catch (e: any) {
+      // Never show a locally made-up code: it would not work and looks valid.
+      setInviteCode('');
+      setInviteError(e?.message || '초대 코드를 발급하지 못했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleCopy = () => {
+    if (!inviteCode) return;
     navigator.clipboard.writeText(inviteCode);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
@@ -169,11 +175,12 @@ export function FamilyShareModal({
 
               <div className="bg-white p-3 rounded-2xl border border-indigo-200/80 flex items-center justify-between shadow-xs">
                 <div className="font-mono text-base font-black text-indigo-950 tracking-wider">
-                  {inviteCode}
+                  {inviteCode || <span className="text-xs font-bold text-stone-400 tracking-normal">'새 코드 생성'을 눌러 발급하세요</span>}
                 </div>
                 <button
                   type="button"
                   onClick={handleCopy}
+                  disabled={!inviteCode}
                   className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1"
                 >
                   {isCopied ? (
@@ -188,8 +195,11 @@ export function FamilyShareModal({
                 </button>
               </div>
               <p className="text-[10px] text-stone-500 leading-relaxed">
-                초대받은 가족이 아래에 코드를 입력하면 {currentPet.name}의 모든 데이터를 함께 관리할 수 있습니다. (유효기간: 7일)
+                초대받은 가족이 아래에 코드를 입력하면 {currentPet.name}의 모든 데이터를 함께 관리할 수 있습니다. (유효기간: 7일, 1회만 사용 가능)
               </p>
+              {inviteError && (
+                <p role="alert" className="text-[10px] font-bold text-rose-600">{inviteError}</p>
+              )}
             </div>
 
             {/* Join other family */}
@@ -200,7 +210,7 @@ export function FamilyShareModal({
               <div className="flex gap-1.5">
                 <input
                   type="text"
-                  placeholder="예: MOCA-LOVE-7728"
+                  placeholder="예: K7QW-M3ZP-X9RD"
                   value={inputCode}
                   onChange={(e) => setInputCode(e.target.value)}
                   className="flex-1 px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs uppercase font-mono focus:bg-white focus:outline-none focus:border-indigo-600"
