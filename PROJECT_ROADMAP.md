@@ -19,10 +19,14 @@
 
 ---
 
-### [x] 2단계: 사용자 인증 & 계정별 데이터 격리 (Auth & Multi-User)
-- [ ] JWT 기반 회원가입 / 로그인 / 토큰 갱신 API (`/api/v1/auth/*`) — 현재 상태: 실제 JWT 서명/검증 없음. `token_<userId>_<timestamp>` 형태의 평문 토큰(`server.ts` `getAuthUser`)이며, 토큰 갱신(refresh) 엔드포인트도 없음
-- [x] 요청 헤더 Bearer 토큰 검증 미들웨어 구축 (`getAuthUser`)
-- [x] 사용자 계정별 반려동물 데이터 분리 및 가족 초대(공동 양육자) 기능 (`AuthModal`, `FamilyShareModal`)
+### [ ] 2단계: 사용자 인증 & 계정별 데이터 격리 (Auth & Multi-User) — 현재 상태: JWT 인증·비밀번호 해싱·입력값 검증 완료. 반려동물 소유권 검사와 토큰 갱신은 남음
+- [x] JWT 기반 회원가입 / 로그인 API (`POST /api/v1/auth/signup`, `/login`) — HS256 서명(`src/server/jwt.ts`), 알고리즘 고정 + iss/aud/exp/sub 검증, 7일 만료. `JWT_SECRET` 미설정·약한 값이면 서버 기동 거부
+- [ ] 토큰 갱신(refresh) / 로그아웃 시 토큰 폐기 — 현재 상태: 미구현. 액세스 토큰(7일)만 있음
+- [x] 요청 헤더 Bearer 토큰 검증 미들웨어 구축 — `/api/v1` 전체 deny-by-default 가드(`src/server/auth.ts` `createAuthGuard`). 공개 라우트는 login·signup·places GET만. 토큰 없음/위조/만료/옛 형식은 401. 프론트엔드는 401 수신 시 토큰 삭제 후 로그인 화면으로 이동
+- [x] 비밀번호 해싱 — bcrypt(cost 10, 72바이트 제한, `src/server/password.ts`). 평문 저장 제거, 로그인 시 존재하지 않는 이메일도 더미 해시로 비교해 응답 시간 균등화
+- [x] API 입력값 검증 — 모든 `/api/v1/*` 라우트에 zod 스키마(`src/server/schemas.ts`, `validate()` 미들웨어). 실패 시 `400 { success:false, message, errors }`, 잘못된 JSON 400, 본문 초과 413
+- [ ] 사용자 계정별 반려동물 데이터 분리(소유권 검사) — 현재 상태: 로그인 사용자는 식별되지만, 남의 `petId` 접근을 막는 인가 검사가 없음 (`docs/next-tasks/pet-ownership-authorization.md`)
+- [x] 가족 초대(공동 양육자) 기능 (`AuthModal`, `FamilyShareModal`)
 
 ---
 
