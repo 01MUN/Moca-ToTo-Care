@@ -103,7 +103,10 @@ async function request<T>(endpoint: string, options?: RequestInit, fallbackData?
       const errBody = await res.json().catch(() => ({}));
       const message = errBody.message || `API Error: ${res.status}`;
       if (res.status === 401 && !behavior.isAuthAttempt) {
-        handleSessionExpired();
+        // Only expire the session if this 401 belongs to the token still in use.
+        // A late 401 for an old token (the user has since logged in again) must
+        // not wipe out the new session.
+        if (authStorage.getToken() === token) handleSessionExpired();
         throw new UnauthorizedError(errBody.message || undefined);
       }
       throw new Error(message);

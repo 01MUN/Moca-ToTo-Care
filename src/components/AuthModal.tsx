@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Lock, Mail, User, Heart, Sparkles, CheckCircle2, ArrowRight, ShieldCheck, LogIn, UserPlus } from 'lucide-react';
+import { X, Lock, Mail, User, Heart, Sparkles, CheckCircle2, ArrowRight, ShieldCheck, LogIn, LogOut, UserPlus } from 'lucide-react';
 import { authApiService } from '../services/api';
 import { User as UserType, PetProfile } from '../types';
 
@@ -13,9 +13,11 @@ interface AuthModalProps {
   dismissible?: boolean;
   /** Optional banner, e.g. a session-expired notice. */
   notice?: string;
+  /** When set and a user is logged in, shows a logout button. */
+  onLogout?: () => void;
 }
 
-export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess, dismissible = true, notice }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess, dismissible = true, notice, onLogout }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -110,6 +112,20 @@ export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess, dismis
           </div>
 
           <div className="p-5 overflow-y-auto space-y-4">
+            {currentUser && onLogout && (
+              <div className="flex items-center justify-between gap-2 bg-stone-50 border border-stone-200 p-3 rounded-2xl">
+                <p className="text-xs font-bold text-stone-700 truncate">
+                  현재 <span className="text-[#8B5E3C]">{currentUser.nickname}</span>님으로 로그인 중
+                </p>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-bold transition-colors"
+                >
+                  <LogOut className="w-3.5 h-3.5" /> 로그아웃
+                </button>
+              </div>
+            )}
             {notice && (
               <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold p-3 rounded-2xl">
                 {notice}

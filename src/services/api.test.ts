@@ -81,6 +81,49 @@ describe('401 handling', () => {
   });
 });
 
+describe('stale 401s and logout', () => {
+  it('does not clear a newer token when a request sent with an old token gets 401', async () => {
+    authStorage.setToken('old.session.token');
+    // While the old request is in flight the user logs in again (new token).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        authStorage.setToken('new.session.token');
+        return jsonResponse(401, { success: false, message: '인증이 필요합니다.' });
+      })
+    );
+    const listener = vi.fn();
+    const unsubscribe = authEvents.onUnauthorized(listener);
+
+    await expect(petApiService.getPets()).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(authStorage.getToken()).toBe('new.session.token');
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it('still expires the session when the 401 is for the current token', async () => {
+    authStorage.setToken('current.session.token');
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { success: false })));
+    const listener = vi.fn();
+    const unsubscribe = authEvents.onUnauthorized(listener);
+
+    await expect(petApiService.getPets()).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(authStorage.getToken()).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('logout clears the stored token without firing a session-expired event', () => {
+    authStorage.setToken('some.session.token');
+    const listener = vi.fn();
+    const unsubscribe = authEvents.onUnauthorized(listener);
+    authApiService.logout();
+    expect(authStorage.getToken()).toBeNull();
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+});
+
 describe('walk history', () => {
   it('loads saved walks from GET /walks (optionally for one pet)', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { success: true, data: [{ id: 'walk-1', durationMinutes: 37 }] }));
