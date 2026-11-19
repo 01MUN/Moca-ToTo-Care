@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Express, Response } from 'express';
 import type { UserRecord, FamilyInviteRecord } from '../store';
 import { getAuthUser } from '../auth';
+import { requirePetAccess } from '../authorization';
 import { signAccessToken } from '../jwt';
 import { hashPassword, verifyPassword } from '../password';
 import { validate } from '../validation';
@@ -154,11 +155,10 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
   });
 
   // POST /api/v1/auth/family/invite - Create co-parenting invite code
-  app.post('/api/v1/auth/family/invite', validate({ body: familyInviteBody }), (req, res) => {
+  // Owner only: a stranger gets 404, a co-parent gets 403.
+  app.post('/api/v1/auth/family/invite', validate({ body: familyInviteBody }), requirePetAccess(petsDb, { from: 'body', level: 'owner' }), (req, res) => {
     const user = getAuthUser(res);
-    const { petId } = req.body;
-    const pet = petsDb.find(p => p.id === petId);
-    if (!pet) return res.status(404).json({ success: false, message: '반려동물을 찾을 수 없습니다.' });
+    const pet = res.locals.pet as Store['petsDb'][number];
 
     const inviteCode = `${pet.name.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const newInvite: FamilyInviteRecord = {
