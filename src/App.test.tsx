@@ -188,6 +188,37 @@ describe('user without pets', () => {
     expect(api.joinFamily).toHaveBeenCalledWith('K7QW-M3ZP-X9RD');
   });
 
+  it('loads the shared pet’s existing records after joining with an invite code', async () => {
+    await startAsUserWithoutPets();
+    api.joinFamily.mockResolvedValue({ pet: PET_B, sharedPetIds: [PET_B.id] });
+    api.getHealthRecords.mockResolvedValue([health('hj', '공유동물병원')]);
+    fireEvent.change(screen.getByLabelText('초대 코드'), { target: { value: 'K7QW-M3ZP-X9RD' } });
+    fireEvent.click(screen.getByRole('button', { name: '참여하기' }));
+    await screen.findAllByText(PET_B.name);
+
+    await openRecordsTab();
+    expect(await screen.findByText('공유동물병원')).toBeTruthy();
+  });
+
+  it('ignores a pet registration that finishes after logging out and switching user', async () => {
+    await startAsUserWithoutPets();
+    let finishCreate: (pet: PetProfile) => void = () => {};
+    api.createPet.mockImplementation(() => new Promise<PetProfile>((resolve) => (finishCreate = resolve)));
+    fireEvent.change(screen.getByLabelText('이름'), { target: { value: '늦은냥' } });
+    fireEvent.click(screen.getByRole('button', { name: '등록하기' }));
+
+    // Log out and sign in as B before A's registration returns.
+    fireEvent.click(screen.getByRole('button', { name: /로그아웃/ }));
+    await screen.findByText('보호자 계정 로그인');
+    loginAsOnNextSubmit(USER_B, [PET_B]);
+    await submitLogin('ub@pet.com');
+    await screen.findAllByText(PET_B.name, {}, { timeout: 3000 });
+
+    await act(async () => finishCreate(pet('late', '늦은냥')));
+    expect(screen.queryByText('늦은냥')).toBeNull();
+    expect(screen.getAllByText(PET_B.name).length).toBeGreaterThan(0);
+  });
+
   it('can still log out from the empty screen', async () => {
     await startAsUserWithoutPets();
     fireEvent.click(screen.getByRole('button', { name: /로그아웃/ }));

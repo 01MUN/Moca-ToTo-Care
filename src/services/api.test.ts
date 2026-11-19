@@ -113,6 +113,16 @@ describe('stale 401s and logout', () => {
     unsubscribe();
   });
 
+  it('does not fire a session-expired event for a 401 on a request sent without any token', async () => {
+    authStorage.setToken(null);
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { success: false })));
+    const listener = vi.fn();
+    const unsubscribe = authEvents.onUnauthorized(listener);
+    await expect(petApiService.getPets()).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
   it('logout clears the stored token without firing a session-expired event', () => {
     authStorage.setToken('some.session.token');
     const listener = vi.fn();

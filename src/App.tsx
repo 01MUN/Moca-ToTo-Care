@@ -180,13 +180,21 @@ export default function App() {
     applySession(user, managedPets);
   };
 
-  const handleJoinFamilySuccess = (pet: PetProfile) => {
+  // A pet was registered or joined via invite code. Bound to the session it
+  // started in (see petReadyForThisSession): a result that arrives after logout
+  // or an account switch is dropped. Reloads records so a shared pet's existing
+  // health records and walks appear right away.
+  const handlePetReady = (pet: PetProfile, generation: number) => {
+    if (generation !== sessionGeneration.current) return;
     setPets((prev) => {
       if (prev.some((p) => p.id === pet.id)) return prev;
       return [...prev, pet];
     });
     setCurrentPetId(pet.id);
+    void loadProtectedData(generation);
   };
+  const renderGeneration = sessionGeneration.current;
+  const petReadyForThisSession = (pet: PetProfile) => handlePetReady(pet, renderGeneration);
 
   const handlePetTouch = async () => {
     // Optimistic UI update
@@ -314,7 +322,7 @@ export default function App() {
 
         {/* Logged in but no pets yet: onboarding instead of demo data */}
         {!showSplash && authStatus === 'authenticated' && currentUser && pets.length === 0 && (
-          <FirstPetSetup currentUser={currentUser} onPetReady={handleJoinFamilySuccess} onLogout={handleLogout} />
+          <FirstPetSetup currentUser={currentUser} onPetReady={petReadyForThisSession} onLogout={handleLogout} />
         )}
 
         {!showSplash && authStatus === 'authenticated' && pets.length > 0 && (
@@ -474,7 +482,7 @@ export default function App() {
               onClose={() => setShowFamilyModal(false)}
               currentPet={currentPet}
               currentUser={currentUser}
-              onJoinSuccess={handleJoinFamilySuccess}
+              onJoinSuccess={petReadyForThisSession}
             />
           </div>
         )}

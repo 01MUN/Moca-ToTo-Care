@@ -115,7 +115,8 @@ async function request<T>(endpoint: string, options?: RequestInit, fallbackData?
         // Only expire the session if this 401 belongs to the token still in use.
         // A late 401 for an old token (the user has since logged in again) must
         // not wipe out the new session.
-        if (authStorage.getToken() === token) handleSessionExpired();
+        // (A request sent without any token never had a session to expire.)
+        if (token !== null && authStorage.getToken() === token) handleSessionExpired();
         throw new UnauthorizedError(errBody.message || undefined);
       }
       throw new Error(message);
