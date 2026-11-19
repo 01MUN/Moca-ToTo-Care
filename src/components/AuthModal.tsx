@@ -9,9 +9,13 @@ interface AuthModalProps {
   onClose: () => void;
   currentUser: UserType | null;
   onLoginSuccess: (user: UserType, pets: PetProfile[]) => void;
+  /** false renders a login gate without a close button (used when logged out). */
+  dismissible?: boolean;
+  /** Optional banner, e.g. a session-expired notice. */
+  notice?: string;
 }
 
-export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess, dismissible = true, notice }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -80,12 +84,15 @@ export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess }: Auth
         >
           {/* Header */}
           <div className="bg-gradient-to-br from-[#8B5E3C] to-[#5C3D24] p-5 text-white relative">
-            <button
-              onClick={onClose}
-              className="absolute top-4 right-4 p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {dismissible && (
+              <button
+                onClick={onClose}
+                aria-label="닫기"
+                className="absolute top-4 right-4 p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
             <div className="flex items-center gap-2 mb-1">
               <div className="w-8 h-8 rounded-full bg-amber-400/20 flex items-center justify-center text-amber-300">
                 <ShieldCheck className="w-5 h-5" />
@@ -103,6 +110,11 @@ export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess }: Auth
           </div>
 
           <div className="p-5 overflow-y-auto space-y-4">
+            {notice && (
+              <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold p-3 rounded-2xl">
+                {notice}
+              </div>
+            )}
             {/* Quick Demo Switcher */}
             <div className="bg-amber-50/80 p-3 rounded-2xl border border-amber-200/70 space-y-2">
               <div className="flex items-center justify-between text-[11px] font-extrabold text-[#8B5E3C]">
@@ -243,7 +255,7 @@ export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess }: Auth
                   <Lock className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
                   <input
                     type="password"
-                    placeholder="비밀번호 (6자 이상)"
+                    placeholder="비밀번호 (8자 이상)"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required

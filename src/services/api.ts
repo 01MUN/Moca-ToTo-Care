@@ -11,8 +11,44 @@ const isTestEnv =
   !!process.env &&
   (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
 
-// In-memory token with localStorage persistence
-let currentAuthToken: string | null = typeof window !== 'undefined' ? localStorage.getItem(AUTH_TOKEN_KEY) || 'token_u1_initial' : null;
+// Thrown for HTTP 401. Never replaced by mock fallback data: an expired or
+// invalid session must surface so the UI can send the user to the login screen.
+export class UnauthorizedError extends Error {
+  constructor(message = '인증이 필요합니다. 다시 로그인해주세요.') {
+    super(message);
+    this.name = 'UnauthorizedError';
+  }
+}
+
+export function isUnauthorizedError(error: unknown): error is UnauthorizedError {
+  return error instanceof UnauthorizedError;
+}
+
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+export const authEvents = {
+  // Subscribe to session-expiry events (any protected request answered with 401).
+  // Returns an unsubscribe function.
+  onUnauthorized(listener: UnauthorizedListener): () => void {
+    unauthorizedListeners.add(listener);
+    return () => {
+      unauthorizedListeners.delete(listener);
+    };
+  }
+};
+
+function readStoredToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+// In-memory token with localStorage persistence (no default: logged out until login)
+let currentAuthToken: string | null = readStoredToken();
 
 export const authStorage = {
   getToken(): string | null {
@@ -30,8 +66,26 @@ export const authStorage = {
   }
 };
 
+// Decides what a failed request resolves to. 401s always rethrow; other errors
+// fall back to mock data only when fallback is enabled and data was provided.
+export function resolveRequestFailure<T>(error: unknown, fallbackData: T | undefined, fallbackEnabled: boolean): T {
+  if (isUnauthorizedError(error)) throw error;
+  if (fallbackEnabled && fallbackData !== undefined) return fallbackData;
+  throw error;
+}
+
+interface RequestBehavior {
+  // Auth endpoints answer 401 for bad credentials; that is not a session expiry.
+  isAuthAttempt?: boolean;
+}
+
+function handleSessionExpired(): void {
+  authStorage.setToken(null);
+  unauthorizedListeners.forEach((listener) => listener());
+}
+
 // Safe fetch helper with fallback to initial mock data on network error
-async function request<T>(endpoint: string, options?: RequestInit, fallbackData?: T): Promise<T> {
+async function request<T>(endpoint: string, options?: RequestInit, fallbackData?: T, behavior: RequestBehavior = {}): Promise<T> {
   try {
     const token = authStorage.getToken();
     const headers: Record<string, string> = {
@@ -47,17 +101,21 @@ async function request<T>(endpoint: string, options?: RequestInit, fallbackData?
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.message || `API Error: ${res.status}`);
+      const message = errBody.message || `API Error: ${res.status}`;
+      if (res.status === 401 && !behavior.isAuthAttempt) {
+        handleSessionExpired();
+        throw new UnauthorizedError(errBody.message || undefined);
+      }
+      throw new Error(message);
     }
 
     const json = await res.json();
     return json.data !== undefined ? json.data : json;
   } catch (error) {
-    console.warn(`[API Client Warning] Failed fetching ${endpoint}, using fallback:`, error);
-    if (!isTestEnv && fallbackData !== undefined) {
-      return fallbackData;
+    if (!isUnauthorizedError(error)) {
+      console.warn(`[API Client Warning] Failed fetching ${endpoint}:`, error);
     }
-    throw error;
+    return resolveRequestFailure(error, fallbackData, !isTestEnv);
   }
 }
 
@@ -66,7 +124,7 @@ export const authApiService = {
     const res = await request<AuthResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
-    });
+    }, undefined, { isAuthAttempt: true });
     if (res.token) {
       authStorage.setToken(res.token);
     }
@@ -77,7 +135,7 @@ export const authApiService = {
     const res = await request<AuthResponse>('/auth/signup', {
       method: 'POST',
       body: JSON.stringify({ email, password, nickname, role }),
-    });
+    }, undefined, { isAuthAttempt: true });
     if (res.token) {
       authStorage.setToken(res.token);
     }
@@ -85,18 +143,8 @@ export const authApiService = {
   },
 
   async getMe(): Promise<{ user: User; managedPets: PetProfile[] }> {
-    return request<{ user: User; managedPets: PetProfile[] }>('/auth/me', { method: 'GET' }, {
-      user: {
-        id: 'u1',
-        email: 'moca_mom@toto.com',
-        nickname: '모카맘 (대표 보호자)',
-        role: 'owner',
-        avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
-        sharedPetIds: [],
-        createdAt: '2026-01-01T00:00:00.000Z'
-      },
-      managedPets: INITIAL_PETS
-    });
+    // No mock fallback: a fake "logged-in u1" must never appear when /auth/me fails.
+    return request<{ user: User; managedPets: PetProfile[] }>('/auth/me', { method: 'GET' });
   },
 
   async createFamilyInvite(petId: string): Promise<FamilyInvite> {
