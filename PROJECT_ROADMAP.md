@@ -15,12 +15,12 @@
 - [x] 산책 시작/종료 및 Shapeify 경로 변환 서버 연동 (`POST /api/v1/walks/*`)
 - [x] 우리 동네 장소 및 실시간 카테고리 필터링 서버 연동 (`GET /api/v1/places/nearby`)
 - [x] Gemini AI 닥터 심리분석/케어팁 실시간 API 연동 (`POST /api/v1/ai/doctor-analyze`)
-- [x] 비동기 데이터 로딩 상태 스켈레톤 및 서버 연결 상태 인디케이터 제공
+- [ ] 비동기 데이터 로딩 상태 스켈레톤 및 서버 연결 상태 인디케이터 제공 — 현재 상태: 전역 스켈레톤/연결 상태 인디케이터 없음. 모달별 개별 `isLoading` 스피너만 존재 (`AuthModal.tsx`, `AIInteractionModal.tsx`)
 
 ---
 
 ### [x] 2단계: 사용자 인증 & 계정별 데이터 격리 (Auth & Multi-User)
-- [x] JWT 기반 회원가입 / 로그인 / 토큰 갱신 API (`/api/v1/auth/*`)
+- [ ] JWT 기반 회원가입 / 로그인 / 토큰 갱신 API (`/api/v1/auth/*`) — 현재 상태: 실제 JWT 서명/검증 없음. `token_<userId>_<timestamp>` 형태의 평문 토큰(`server.ts` `getAuthUser`)이며, 토큰 갱신(refresh) 엔드포인트도 없음
 - [x] 요청 헤더 Bearer 토큰 검증 미들웨어 구축 (`getAuthUser`)
 - [x] 사용자 계정별 반려동물 데이터 분리 및 가족 초대(공동 양육자) 기능 (`AuthModal`, `FamilyShareModal`)
 
@@ -41,13 +41,13 @@
 
 ---
 
-### [x] 5단계: 데이터베이스 영속성 (PostgreSQL + PostGIS) & 클라우드 스토리지
+### [ ] 5단계: 데이터베이스 영속성 (PostgreSQL + PostGIS) & 클라우드 스토리지 — 현재 상태: 실제 연결 없음. `src/db/prismaClient.ts`에 PrismaClient가 생성되어 있지만 어디서도 import되지 않는 미사용 코드이고, `server.ts`는 전적으로 인메모리 배열(`usersDb` 등)만 사용. 서버 재시작 시 모든 데이터 소실
 - [x] PostgreSQL 16 + PostGIS 공간 데이터베이스 상용화 스키마 설계 (`src/db/schema.sql`)
 - [x] 공간 LineString 궤적(산책로), GeoPoint(동네 장소), D-Day 예방접종 및 멀티모달 AI 진단 이력 영속화 모델링
 
 ---
 
-### [x] 6단계: 모바일 네이티브(Flutter) 알림 및 오프라인 캐싱
-- [x] D-Day 예방약(심장사상충, 광견병) 복용 로컬 푸시 알림 (`flutter_local_notifications` & Web Notification API)
-- [x] 오프라인 산책 기록 및 일일 체크리스트 로컬 캐싱 엔진 (`Hive` Box 및 SharedPreferences)
+### [ ] 6단계: 모바일 네이티브(Flutter) 알림 및 오프라인 캐싱 — 현재 상태: 이 앱은 웹 앱이고, Flutter/Dart 코드는 `src/data/flutterCode.ts`에 실행되지 않는 참고용 문자열로만 내장되어 있음(네이티브 알림/캐싱이 실제로 동작하지 않음)
+- [ ] D-Day 예방약(심장사상충, 광견병) 복용 로컬 푸시 알림 (`flutter_local_notifications` & Web Notification API) — 현재 상태: Web Notification API만 실제 동작(`RecordsTab.tsx`). `flutter_local_notifications`는 `flutterCode.ts` 안의 참고용 Dart 코드일 뿐 실행되지 않음
+- [ ] 오프라인 산책 기록 및 일일 체크리스트 로컬 캐싱 엔진 (`Hive` Box 및 SharedPreferences) — 현재 상태: Hive/SharedPreferences는 `flutterCode.ts`의 참고용 Dart 코드에만 존재. 웹 앱에는 오프라인 캐싱 엔진이 없음
 - [x] Flutter 모바일 프로젝트 전체 코드 뷰어 및 다운로드 지원 (`FlutterCodeViewerModal.tsx`, `src/data/flutterCode.ts`)
