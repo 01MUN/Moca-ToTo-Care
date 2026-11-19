@@ -4,6 +4,13 @@ import { INITIAL_PETS, INITIAL_DAILY_RECORDS, INITIAL_HEALTH_RECORDS, INITIAL_WA
 const BASE_URL = '/api/v1';
 const AUTH_TOKEN_KEY = 'mocatoto_auth_token';
 
+// Mock-data fallback is disabled under Vitest so tests see real request failures
+// instead of silently passing on fallback data.
+const isTestEnv =
+  typeof process !== 'undefined' &&
+  !!process.env &&
+  (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
+
 // In-memory token with localStorage persistence
 let currentAuthToken: string | null = typeof window !== 'undefined' ? localStorage.getItem(AUTH_TOKEN_KEY) || 'token_u1_initial' : null;
 
@@ -47,7 +54,7 @@ async function request<T>(endpoint: string, options?: RequestInit, fallbackData?
     return json.data !== undefined ? json.data : json;
   } catch (error) {
     console.warn(`[API Client Warning] Failed fetching ${endpoint}, using fallback:`, error);
-    if (fallbackData !== undefined) {
+    if (!isTestEnv && fallbackData !== undefined) {
       return fallbackData;
     }
     throw error;
