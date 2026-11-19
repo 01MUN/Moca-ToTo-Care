@@ -2,6 +2,15 @@ import { PetProfile, RecordItem, HealthRecord, WalkSession, CommunityPlace, User
 import { INITIAL_PETS, INITIAL_DAILY_RECORDS, INITIAL_HEALTH_RECORDS, INITIAL_WALK_SESSIONS, INITIAL_COMMUNITY_PLACES } from '../data/mockData';
 
 const BASE_URL = '/api/v1';
+
+export interface NewPetInput {
+  name: string;
+  breed?: string;
+  /** ISO date YYYY-MM-DD */
+  birthDate?: string;
+  /** kg */
+  weight?: number;
+}
 const AUTH_TOKEN_KEY = 'mocatoto_auth_token';
 
 // Mock-data fallback is disabled under Vitest so tests see real request failures
@@ -103,7 +112,11 @@ async function request<T>(endpoint: string, options?: RequestInit, fallbackData?
       const errBody = await res.json().catch(() => ({}));
       const message = errBody.message || `API Error: ${res.status}`;
       if (res.status === 401 && !behavior.isAuthAttempt) {
-        handleSessionExpired();
+        // Only expire the session if this 401 belongs to the token still in use.
+        // A late 401 for an old token (the user has since logged in again) must
+        // not wipe out the new session.
+        // (A request sent without any token never had a session to expire.)
+        if (token !== null && authStorage.getToken() === token) handleSessionExpired();
         throw new UnauthorizedError(errBody.message || undefined);
       }
       throw new Error(message);
@@ -131,10 +144,12 @@ export const authApiService = {
     return res;
   },
 
-  async signup(email: string, password: string, nickname: string, role: string = 'owner'): Promise<AuthResponse> {
+  // New accounts are always 'owner' on the server; co-parents join a pet with
+  // an invite code afterwards (joinFamily), so no role is sent.
+  async signup(email: string, password: string, nickname: string): Promise<AuthResponse> {
     const res = await request<AuthResponse>('/auth/signup', {
       method: 'POST',
-      body: JSON.stringify({ email, password, nickname, role }),
+      body: JSON.stringify({ email, password, nickname }),
     }, undefined, { isAuthAttempt: true });
     if (res.token) {
       authStorage.setToken(res.token);
@@ -172,7 +187,8 @@ export const petApiService = {
     return request<PetProfile[]>('/pets', { method: 'GET' }, INITIAL_PETS);
   },
 
-  async createPet(pet: Partial<PetProfile>): Promise<PetProfile> {
+  // Field names follow the server's POST /pets body (src/server/schemas.ts createPetBody).
+  async createPet(pet: NewPetInput): Promise<PetProfile> {
     return request<PetProfile>('/pets', {
       method: 'POST',
       body: JSON.stringify(pet),
@@ -223,6 +239,13 @@ export const petApiService = {
   },
 
   // 3. Walks & Shapeify
+  // Saved walk history (newest first). No mock fallback: an empty history is
+  // better than showing demo walks as if they were the user's.
+  async getWalkSessions(petId?: string): Promise<WalkSession[]> {
+    const query = petId ? `?petId=${encodeURIComponent(petId)}` : '';
+    return request<WalkSession[]>(`/walks${query}`, { method: 'GET' });
+  },
+
   async startWalk(petId: string, coords?: { lat: number; lng: number }): Promise<{ walkId: string }> {
     return request<{ walkId: string }>('/walks/start', {
       method: 'POST',

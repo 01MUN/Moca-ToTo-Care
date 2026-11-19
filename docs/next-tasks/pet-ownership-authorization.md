@@ -2,7 +2,8 @@
 
 > **상태 (2026-11-19): 소유권 검사 완료.** `feat/pet-ownership`에서 구현했습니다 (`src/server/authorization.ts`, 테스트 `src/server/ownership.test.ts`).
 > 아래 "검사가 필요한 라우트" 표는 모두 처리되었습니다. 단, `family/join`의 초대 코드 만료와 추측 가능한 코드 형식은 아직 남아 있습니다.
-> 남은 작업은 "이번 작업 중 발견한 기존 문제", "보안 리뷰에서 남은 LOW 항목", 맨 아래 "코드 리뷰 MEDIUM 이하"입니다.
+> **상태 (2026-11-19, feat/fix-remaining-issues):** 초대 코드 만료·1회 사용·랜덤 코드, 필드명 불일치(건강 기록·산책), 신규 사용자 빈 화면, 회원가입 공동 양육자 옵션, 로그아웃/계정 전환 시 데이터 초기화, 늦은 401 문제를 해결했습니다. 아래 항목 중 ✅ 표시는 해결된 것입니다.
+> **지금 남은 작업은 맨 아래 "현재 남은 이슈" 표에 모아 두었습니다.**
 
 > 다음 세션에서 이렇게 시작하면 됩니다:
 > `/ecc:plan docs/next-tasks/pet-ownership-authorization.md`
@@ -29,7 +30,7 @@
 | `POST /walks/start`, `/walks/end`, `/walks/:walkId/shapeify` | `petId`가 없으면 `'p1'`, walk 소유자 확인 없음 | 산책 기록에 userId 저장, 소유자 확인 |
 | `GET /ai/history/:petId`, `POST /ai/doctor-analyze` | 누구나 조회 가능, `petId`가 없으면 `'p1'` | owned 또는 shared |
 | `POST /auth/family/invite` | **남의 petId로도 초대 코드 발급 가능** | owner만 |
-| `POST /auth/family/join` | 초대 코드만 맞으면 됨. `expiresAt`은 확인하지 않음 | 만료 확인. 코드 형식(`이름-4자리`)이 추측 가능하니 랜덤 코드로 교체 검토 |
+| ✅ `POST /auth/family/join` | 초대 코드만 맞으면 됨. `expiresAt`은 확인하지 않음 | 만료 확인. 코드 형식(`이름-4자리`)이 추측 가능하니 랜덤 코드로 교체 검토 |
 
 ## 제안 방향 (계획 단계에서 확정)
 
@@ -40,9 +41,9 @@
 
 ## 이번 작업 중 발견한 기존 문제 (같이 다루거나 별도 작업으로)
 
-1. **클라이언트와 서버의 필드명 불일치**: 클라이언트는 `HealthRecord`를 `{ date, weightKg, memo }`로, `WalkSession`을 `{ durationMinutes, stepCount, rawPath }`로 보내고, 서버는 `visitDate`, `weightAtVisit`, `durationSeconds`, `steps`, `coordinates`를 기대합니다. 지금은 schema가 모르는 필드를 제거하고 서버 기본값이 들어가서, **사용자가 입력한 날짜와 체중이 저장되지 않습니다**.
-2. **회원가입 화면의 역할 선택**: `AuthModal`에서 "공동 양육자"를 고를 수 있지만, 서버는 이제 항상 `owner`로 가입시킵니다. 공동 양육은 초대 코드로만 가능하므로 UI 선택지를 없애거나 문구를 바꿔야 합니다.
-3. **새 사용자의 빈 반려동물 목록**: 반려동물이 없는 신규 가입자에게는 `App.tsx` 초기값(`INITIAL_PETS`)이 그대로 보입니다. 화면 곳곳이 `pets[0]`이 있다고 가정하고 있어서, "첫 반려동물 등록" 빈 상태 화면이 필요합니다.
+✅ (건강 기록·산책은 해결, 일일 기록은 남음) 1. **클라이언트와 서버의 필드명 불일치**: 클라이언트는 `HealthRecord`를 `{ date, weightKg, memo }`로, `WalkSession`을 `{ durationMinutes, stepCount, rawPath }`로 보내고, 서버는 `visitDate`, `weightAtVisit`, `durationSeconds`, `steps`, `coordinates`를 기대합니다. 지금은 schema가 모르는 필드를 제거하고 서버 기본값이 들어가서, **사용자가 입력한 날짜와 체중이 저장되지 않습니다**.
+✅ 2. **회원가입 화면의 역할 선택**: `AuthModal`에서 "공동 양육자"를 고를 수 있지만, 서버는 이제 항상 `owner`로 가입시킵니다. 공동 양육은 초대 코드로만 가능하므로 UI 선택지를 없애거나 문구를 바꿔야 합니다.
+✅ 3. **새 사용자의 빈 반려동물 목록**: 반려동물이 없는 신규 가입자에게는 `App.tsx` 초기값(`INITIAL_PETS`)이 그대로 보입니다. 화면 곳곳이 `pets[0]`이 있다고 가정하고 있어서, "첫 반려동물 등록" 빈 상태 화면이 필요합니다.
 4. **오프라인 데모 모드 상실**: 로그인 없이 목업 데이터로 둘러보던 흐름은 의도적으로 없앴습니다. 데모가 필요하면 "데모 계정으로 둘러보기" 버튼(실제 로그인)으로 대체를 검토합니다.
 5. **보안 후속 과제**: 로그인 rate limiting(brute-force 방지), refresh token과 로그아웃 시 토큰 폐기, 비밀번호 변경 시 기존 토큰 무효화(`tokenVersion` 클레임).
 
@@ -60,10 +61,26 @@ CRITICAL/HIGH는 없었습니다. 아래는 고치지 않고 목록만 남깁니
 
 | 심각도 | 위치 | 내용 | 제안 |
 |---|---|---|---|
-| MEDIUM | `src/App.tsx` `applySession` | 계정이 바뀌어도(401 후 재로그인) 이전 사용자의 `pets`/기록/`currentPetId`가 화면에 남음. 로그아웃 UI도 없음 | 401과 로그인 시 상태 초기화, 로그아웃 버튼 추가 |
-| MEDIUM | `src/services/api.ts` `handleSessionExpired` | 옛 토큰으로 보낸 요청의 늦은 401이 새로 로그인한 토큰까지 지움 | 요청 시점 토큰과 현재 토큰이 같을 때만 세션 만료 처리 |
+| ✅ MEDIUM | `src/App.tsx` `applySession` | 계정이 바뀌어도(401 후 재로그인) 이전 사용자의 `pets`/기록/`currentPetId`가 화면에 남음. 로그아웃 UI도 없음 | 401과 로그인 시 상태 초기화, 로그아웃 버튼 추가 |
+| ✅ MEDIUM | `src/services/api.ts` `handleSessionExpired` | 옛 토큰으로 보낸 요청의 늦은 401이 새로 로그인한 토큰까지 지움 | 요청 시점 토큰과 현재 토큰이 같을 때만 세션 만료 처리 |
 | MEDIUM | `src/server/app.ts` | 로그인 사용자가 없는 `/api/v1/*` 경로를 호출하면 JSON이 아닌 HTML 404(운영에선 index.html 200) | `/api/v1` JSON 404 핸들러 추가 |
-| MEDIUM | 테스트 | `App.tsx` 로그인 게이트/세션 만료 전환에 대한 UI 테스트 없음 | jsdom + Testing Library 테스트 |
+| ✅ MEDIUM | 테스트 | `App.tsx` 로그인 게이트/세션 만료 전환에 대한 UI 테스트 없음 | jsdom + Testing Library 테스트 |
 | LOW | `src/components/AuthModal.tsx` | 로그인 성공 후 500ms `setTimeout`에 정리(cleanup) 없음 | `onLoginSuccess` 즉시 호출 |
-| LOW | `src/services/api.ts` `signup` | 서버가 무시하는 `role`을 계속 전송 | 시그니처에서 제거 |
+| ✅ LOW | `src/services/api.ts` `signup` | 서버가 무시하는 `role`을 계속 전송 | 시그니처에서 제거 |
 | LOW | `src/services/api.ts` | 401 메시지를 서버 문구로 덮어씀 (현재 동일 문구라 무해) | — |
+
+## 현재 남은 이슈 (2026-11-19 기준, feat/fix-remaining-issues 머지 후)
+
+| 심각도 | 위치 | 내용 | 제안 |
+|---|---|---|---|
+| MEDIUM | 일일 기록 (`RecordItem` ↔ 서버 `dailyRecord`) | 클라이언트는 `{ time, category, title, detail, completed }`, 서버는 `{ recordDate, feedChecked… }` — 일일 기록은 아직 필드명이 맞지 않아 저장 후 다시 불러오면 내용이 비어 보임 | 건강 기록과 같은 방식으로 API를 클라이언트 필드명에 맞추기 |
+| MEDIUM | `src/App.tsx` `loadProtectedData` | `/walks` 하나가 500이면 같은 `Promise.all`의 일일·건강 기록까지 버려짐 | `Promise.allSettled`로 각각 반영 |
+| MEDIUM | `src/server/routes/pets.ts` `POST /pets` | 첫 반려동물 등록 시 비워 둔 품종·생일·몸무게를 서버가 '믹스견'/오늘/3.0kg으로 채움 (기존 동작) | 미입력 값은 비워 두고 UI가 '미입력' 표시 |
+| MEDIUM | `src/server/app.ts` | 로그인 사용자가 없는 `/api/v1/*` 경로 호출 시 HTML 404 | `/api/v1` JSON 404 핸들러 |
+| LOW | `src/server/routes/pets.ts` | 반려동물 id가 `p${Date.now()}` — 같은 ms 생성 시 충돌 가능(인가가 id 기준) | `randomUUID` 사용 |
+| LOW | `src/server/routes/walks.ts` | `activeWalks`가 일반 객체라 `__proto__` 같은 키 조회가 프로토타입을 반환(현재 무해) | `Map` 또는 `Object.hasOwn` |
+| LOW | `src/server/inviteCode.ts` | 하이픈 없이 입력한 초대 코드는 404 | 영숫자만 남겨 재포맷 |
+| LOW | `src/server/petProfile.ts` | `favoriteFood`를 `traits`로 매핑(의미상 근사) | 별도 필드 추가 |
+| LOW | `src/components/AuthModal.tsx` | 로그인 성공 후 500ms `setTimeout` 정리 없음 | `onLoginSuccess` 즉시 호출 |
+| LOW (보안) | signup / `ai.ts` / `jwt.ts` | 가입 시 이메일 존재 노출, AI 500 응답의 내부 메시지 노출, 비밀키 강도는 길이만 검사 | 위 "보안 리뷰에서 남은 LOW 항목" 참고 |
+| 미구현 | 인증 | refresh token, 서버 측 토큰 폐기(로그아웃은 클라이언트 토큰만 삭제), 로그인 rate limiting | 별도 작업 |

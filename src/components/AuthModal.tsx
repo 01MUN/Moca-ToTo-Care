@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Lock, Mail, User, Heart, Sparkles, CheckCircle2, ArrowRight, ShieldCheck, LogIn, UserPlus } from 'lucide-react';
+import { X, Lock, Mail, User, Heart, Sparkles, CheckCircle2, ArrowRight, ShieldCheck, LogIn, LogOut, UserPlus } from 'lucide-react';
 import { authApiService } from '../services/api';
 import { User as UserType, PetProfile } from '../types';
 
@@ -13,14 +13,17 @@ interface AuthModalProps {
   dismissible?: boolean;
   /** Optional banner, e.g. a session-expired notice. */
   notice?: string;
+  /** When set and a user is logged in, shows a logout button. */
+  onLogout?: () => void;
 }
 
-export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess, dismissible = true, notice }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess, dismissible = true, notice, onLogout }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [role, setRole] = useState<'owner' | 'co_parent'>('owner');
+  const [familyInviteCode, setFamilyInviteCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -59,10 +62,28 @@ export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess, dismis
           onClose();
         }, 500);
       } else {
-        const res = await authApiService.signup(email, password, nickname, role);
+        const res = await authApiService.signup(email, password, nickname);
+        let managedPets = res.managedPets;
+        // Co-parents are not a server role: they join the family pet with the
+        // invite code right after the account is created.
+        if (role === 'co_parent') {
+          try {
+            const joined = await authApiService.joinFamily(familyInviteCode.trim());
+            if (joined.pet) managedPets = [joined.pet];
+          } catch (joinErr: any) {
+            // The account exists and is logged in; the first-pet screen lets
+            // them enter the code again.
+            setErrorMsg(`가입은 완료됐지만 초대 코드로 참여하지 못했어요: ${joinErr?.message || '유효하지 않은 코드'}. 첫 화면에서 다시 입력할 수 있어요.`);
+            setTimeout(() => {
+              onLoginSuccess(res.user, managedPets);
+              onClose();
+            }, 1500);
+            return;
+          }
+        }
         setSuccessMsg('회원가입이 완료되어 자동 로그인되었습니다!');
         setTimeout(() => {
-          onLoginSuccess(res.user, res.managedPets);
+          onLoginSuccess(res.user, managedPets);
           onClose();
         }, 500);
       }
@@ -110,6 +131,20 @@ export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess, dismis
           </div>
 
           <div className="p-5 overflow-y-auto space-y-4">
+            {currentUser && onLogout && (
+              <div className="flex items-center justify-between gap-2 bg-stone-50 border border-stone-200 p-3 rounded-2xl">
+                <p className="text-xs font-bold text-stone-700 truncate">
+                  현재 <span className="text-[#8B5E3C]">{currentUser.nickname}</span>님으로 로그인 중
+                </p>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-bold transition-colors"
+                >
+                  <LogOut className="w-3.5 h-3.5" /> 로그아웃
+                </button>
+              </div>
+            )}
             {notice && (
               <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold p-3 rounded-2xl">
                 {notice}
@@ -226,6 +261,25 @@ export function AuthModal({ isOpen, onClose, currentUser, onLoginSuccess, dismis
                         🤝 가족 공동 양육자
                       </button>
                     </div>
+                    {role === 'co_parent' && (
+                      <div className="mt-2">
+                        <label htmlFor="signup-invite-code" className="text-[11px] font-bold text-stone-700 block mb-1">
+                          받은 초대 코드
+                        </label>
+                        <input
+                          id="signup-invite-code"
+                          type="text"
+                          required
+                          placeholder="XXXX-XXXX-XXXX"
+                          value={familyInviteCode}
+                          onChange={(e) => setFamilyInviteCode(e.target.value)}
+                          className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs uppercase font-mono focus:bg-white focus:outline-none focus:border-[#8B5E3C]"
+                        />
+                        <p className="text-[10px] text-stone-500 mt-1">
+                          대표 보호자에게 받은 1회용 코드로 가입과 동시에 함께 돌보게 됩니다.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

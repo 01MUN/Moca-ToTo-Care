@@ -156,10 +156,16 @@ describe('records input', () => {
       diagnosis: '접종',
       weightKg: 3.8,
       cost: 45000,
-      petId: 'p1'
+      petId: 'p1',
+      unknownClientField: 'should be dropped'
     });
     expect(res.status).toBe(201);
-    expect((await res.json()).data).not.toHaveProperty('weightKg');
+    const data = (await res.json()).data;
+    expect(data).not.toHaveProperty('unknownClientField');
+    // The client's own fields are now part of the API contract and are kept.
+    expect(data).toMatchObject({ weightKg: 3.8, date: '2026.08.01' });
+    // The client-supplied id is not trusted; the server assigns its own.
+    expect(data.id).not.toBe('h-client');
   });
 
   it('rejects overly long notes', async () => {

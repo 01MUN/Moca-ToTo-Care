@@ -3,16 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TabType, PetProfile, ThemeId, RecordItem, HealthRecord, WalkSession, CommunityPlace, User } from './types';
-import {
-  INITIAL_PETS,
-  THEME_OPTIONS,
-  INITIAL_DAILY_RECORDS,
-  INITIAL_HEALTH_RECORDS,
-  INITIAL_WALK_SESSIONS,
-  INITIAL_COMMUNITY_PLACES,
-} from './data/mockData';
+import { INITIAL_PETS, THEME_OPTIONS, INITIAL_COMMUNITY_PLACES } from './data/mockData';
 import { petApiService, authApiService, authEvents, authStorage, isUnauthorizedError } from './services/api';
 import { Splash } from './components/Splash';
 import { Navbar } from './components/Navbar';
@@ -25,6 +18,7 @@ import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { AIInteractionModal } from './components/AIInteractionModal';
 import { PixelPetModal } from './components/PixelPetModal';
 import { AuthModal } from './components/AuthModal';
+import { FirstPetSetup } from './components/FirstPetSetup';
 import { FamilyShareModal } from './components/FamilyShareModal';
 import { MobileFrameWrapper } from './components/MobileFrameWrapper';
 import { FlutterCodeViewerModal } from './components/FlutterCodeViewerModal';
@@ -36,8 +30,9 @@ type AuthStatus = 'checking' | 'authenticated' | 'anonymous';
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('home');
-  const [pets, setPets] = useState<PetProfile[]>(INITIAL_PETS);
-  const [currentPetId, setCurrentPetId] = useState<string>(INITIAL_PETS[0].id);
+  // User data starts empty and is filled only from the logged-in user's API data.
+  const [pets, setPets] = useState<PetProfile[]>([]);
+  const [currentPetId, setCurrentPetId] = useState<string>('');
   const [activeThemeId, setActiveThemeId] = useState<ThemeId>('living');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -58,20 +53,51 @@ export default function App() {
   const [showFamilyModal, setShowFamilyModal] = useState(false);
 
   // App Data State
-  const [dailyRecords, setDailyRecords] = useState<RecordItem[]>(INITIAL_DAILY_RECORDS);
-  const [healthRecords, setHealthRecords] = useState<HealthRecord[]>(INITIAL_HEALTH_RECORDS);
-  const [walkSessions, setWalkSessions] = useState<WalkSession[]>(INITIAL_WALK_SESSIONS);
+  const [dailyRecords, setDailyRecords] = useState<RecordItem[]>([]);
+  const [healthRecords, setHealthRecords] = useState<HealthRecord[]>([]);
+  const [walkSessions, setWalkSessions] = useState<WalkSession[]>([]);
   const [communityPlaces, setCommunityPlaces] = useState<CommunityPlace[]>(INITIAL_COMMUNITY_PLACES);
+
+  // Bumped on every login / logout / session expiry. Async loads remember the
+  // generation they started in and drop their result if it changed, so a slow
+  // response for the previous user can never land in the next user's state.
+  const sessionGeneration = useRef(0);
+
+  // Clears everything that belongs to the current user (state only; the token
+  // is cleared by the API client). Public data such as places is kept.
+  function clearUserData() {
+    sessionGeneration.current += 1;
+    setCurrentUser(null);
+    setPets([]);
+    setCurrentPetId('');
+    setDailyRecords([]);
+    setHealthRecords([]);
+    setWalkSessions([]);
+    setActiveTab('home');
+    setShowThemeModal(false);
+    setShowAIModal(false);
+    setShowPixelModal(false);
+    setShowAuthModal(false);
+    setShowFamilyModal(false);
+    setIsSyncing(false);
+  }
 
   // Any protected request answered with 401 (expired/invalid token): the API
   // client has already cleared the token; drop the session and show the login gate.
   useEffect(() => {
     return authEvents.onUnauthorized(() => {
-      setCurrentUser(null);
+      clearUserData();
       setAuthStatus('anonymous');
       setAuthNotice('로그인이 만료되었습니다. 다시 로그인해주세요.');
     });
   }, []);
+
+  const handleLogout = () => {
+    authApiService.logout();
+    clearUserData();
+    setAuthStatus('anonymous');
+    setAuthNotice(undefined);
+  };
 
   // Public data (no login required)
   useEffect(() => {
@@ -111,31 +137,36 @@ export default function App() {
 
   // Load the logged-in user's records. Network failures may fall back to demo
   // data, but a 401 never does (it rejects and triggers the login gate instead).
-  async function loadProtectedData() {
+  async function loadProtectedData(generation: number) {
     setIsSyncing(true);
     try {
-      const [backendDaily, backendHealth] = await Promise.all([
+      const [backendDaily, backendHealth, backendWalks] = await Promise.all([
         petApiService.getDailyRecords(),
         petApiService.getHealthRecords(),
+        petApiService.getWalkSessions(),
       ]);
+      if (generation !== sessionGeneration.current) return; // stale: user changed
       setDailyRecords(backendDaily);
       setHealthRecords(backendHealth);
+      setWalkSessions(backendWalks);
     } catch (err) {
       if (!isUnauthorizedError(err)) console.warn('Backend sync warning:', err);
     } finally {
-      setIsSyncing(false);
+      if (generation === sessionGeneration.current) setIsSyncing(false);
     }
   }
 
+  // Starts a session for `user`. Always wipes the previous user's data first,
+  // so switching accounts (with or without logging out) never mixes data.
   function applySession(user: User, managedPets: PetProfile[]) {
+    clearUserData();
+    const generation = sessionGeneration.current;
     setCurrentUser(user);
     setAuthStatus('authenticated');
     setAuthNotice(undefined);
-    if (managedPets && managedPets.length > 0) {
-      setPets(managedPets);
-      setCurrentPetId((prevId) => (managedPets.some((p) => p.id === prevId) ? prevId : managedPets[0].id));
-    }
-    void loadProtectedData();
+    setPets(managedPets ?? []);
+    setCurrentPetId(managedPets?.[0]?.id ?? '');
+    void loadProtectedData(generation);
   }
 
   const currentPet = pets.find((p) => p.id === currentPetId) || pets[0] || INITIAL_PETS[0];
@@ -149,13 +180,21 @@ export default function App() {
     applySession(user, managedPets);
   };
 
-  const handleJoinFamilySuccess = (pet: PetProfile) => {
+  // A pet was registered or joined via invite code. Bound to the session it
+  // started in (see petReadyForThisSession): a result that arrives after logout
+  // or an account switch is dropped. Reloads records so a shared pet's existing
+  // health records and walks appear right away.
+  const handlePetReady = (pet: PetProfile, generation: number) => {
+    if (generation !== sessionGeneration.current) return;
     setPets((prev) => {
       if (prev.some((p) => p.id === pet.id)) return prev;
       return [...prev, pet];
     });
     setCurrentPetId(pet.id);
+    void loadProtectedData(generation);
   };
+  const renderGeneration = sessionGeneration.current;
+  const petReadyForThisSession = (pet: PetProfile) => handlePetReady(pet, renderGeneration);
 
   const handlePetTouch = async () => {
     // Optimistic UI update
@@ -281,7 +320,12 @@ export default function App() {
           </div>
         )}
 
-        {!showSplash && authStatus === 'authenticated' && (
+        {/* Logged in but no pets yet: onboarding instead of demo data */}
+        {!showSplash && authStatus === 'authenticated' && currentUser && pets.length === 0 && (
+          <FirstPetSetup currentUser={currentUser} onPetReady={petReadyForThisSession} onLogout={handleLogout} />
+        )}
+
+        {!showSplash && authStatus === 'authenticated' && pets.length > 0 && (
           <div className="flex flex-col min-h-full">
             {/* Top Backend Sync Status Bar */}
             <div className="bg-emerald-800 text-emerald-100 px-4 py-1 text-[11px] flex items-center justify-between font-medium">
@@ -429,6 +473,7 @@ export default function App() {
               onClose={() => setShowAuthModal(false)}
               currentUser={currentUser}
               onLoginSuccess={handleLoginSuccess}
+              onLogout={handleLogout}
             />
 
             {/* Co-Parenting Family Sharing Modal */}
@@ -437,7 +482,7 @@ export default function App() {
               onClose={() => setShowFamilyModal(false)}
               currentPet={currentPet}
               currentUser={currentUser}
-              onJoinSuccess={handleJoinFamilySuccess}
+              onJoinSuccess={petReadyForThisSession}
             />
           </div>
         )}

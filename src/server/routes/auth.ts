@@ -3,6 +3,8 @@ import type { Express, Response } from 'express';
 import type { UserRecord, FamilyInviteRecord } from '../store';
 import { getAuthUser } from '../auth';
 import { requirePetAccess } from '../authorization';
+import { toPetProfile } from '../petProfile';
+import { INVITE_TTL_MS, generateInviteCode, normalizeInviteCode } from '../inviteCode';
 import { signAccessToken } from '../jwt';
 import { hashPassword, verifyPassword } from '../password';
 import { validate } from '../validation';
@@ -50,7 +52,7 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
     const token = issueToken(res, user.id);
     if (!token) return;
     const userPetIds = [...user.ownedPetIds, ...user.sharedPetIds];
-    const managedPets = petsDb.filter(p => userPetIds.includes(p.id));
+    const managedPets = petsDb.filter(p => userPetIds.includes(p.id)).map(p => toPetProfile(p));
 
     res.json({
       success: true,
@@ -135,7 +137,7 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
   app.get('/api/v1/auth/me', (req, res) => {
     const user = getAuthUser(res);
     const userPetIds = [...user.ownedPetIds, ...user.sharedPetIds];
-    const managedPets = petsDb.filter(p => userPetIds.includes(p.id));
+    const managedPets = petsDb.filter(p => userPetIds.includes(p.id)).map(p => toPetProfile(p));
 
     res.json({
       success: true,
@@ -160,14 +162,16 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
     const user = getAuthUser(res);
     const pet = res.locals.pet as Store['petsDb'][number];
 
-    const inviteCode = `${pet.name.toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Random and unguessable; retry on the (astronomically unlikely) collision.
+    let inviteCode = generateInviteCode();
+    while (familyInvitesDb.some(i => i.inviteCode === inviteCode)) inviteCode = generateInviteCode();
     const newInvite: FamilyInviteRecord = {
       inviteCode,
       petId: pet.id,
       petName: pet.name,
       inviterId: user.id,
       inviterName: user.nickname,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      expiresAt: new Date(Date.now() + INVITE_TTL_MS).toISOString()
     };
 
     familyInvitesDb.push(newInvite);
@@ -181,23 +185,31 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
   // POST /api/v1/auth/family/join - Join pet co-parenting using invite code
   app.post('/api/v1/auth/family/join', validate({ body: familyJoinBody }), (req, res) => {
     const user = getAuthUser(res);
-    const { inviteCode } = req.body;
-    const invite = familyInvitesDb.find(i => i.inviteCode.toUpperCase() === inviteCode?.trim().toUpperCase());
+    const code = normalizeInviteCode(String(req.body.inviteCode));
+    const invite = familyInvitesDb.find(i => i.inviteCode === code);
+    const pet = invite ? petsDb.find(p => p.id === invite.petId) : undefined;
+    const isUsable =
+      invite !== undefined && pet !== undefined && !invite.usedAt && new Date(invite.expiresAt).getTime() > Date.now();
 
-    if (!invite) {
+    // Unknown, already-used, expired and orphaned codes all get the same 404 so
+    // the response never reveals which codes exist.
+    if (!invite || !pet || !isUsable) {
       return res.status(404).json({ success: false, message: '유효하지 않거나 만료된 가족 초대 코드입니다.' });
     }
 
-    if (!user.sharedPetIds.includes(invite.petId) && !user.ownedPetIds.includes(invite.petId)) {
-      user.sharedPetIds.push(invite.petId);
+    // Already a member: do not burn the code, someone else may still need it.
+    if (user.sharedPetIds.includes(pet.id) || user.ownedPetIds.includes(pet.id)) {
+      return res.status(409).json({ success: false, message: '이미 함께 돌보고 있는 반려동물입니다.' });
     }
 
-    const pet = petsDb.find(p => p.id === invite.petId);
+    invite.usedAt = new Date().toISOString();
+    invite.usedBy = user.id;
+    user.sharedPetIds.push(pet.id);
     res.json({
       success: true,
       message: `'${invite.inviterName}'님의 '${invite.petName}' 공동 양육자로 등록되었습니다! 🎉`,
       data: {
-        pet,
+        pet: toPetProfile(pet),
         sharedPetIds: user.sharedPetIds
       }
     });

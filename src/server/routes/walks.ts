@@ -1,13 +1,43 @@
 import type { Express } from 'express';
 import { getAuthUser } from '../auth';
-import { getPetAccess, requirePetAccess, sendPetNotFound } from '../authorization';
+import { accessiblePetIds, getPetAccess, requirePetAccess, sendPetNotFound } from '../authorization';
 import { validate } from '../validation';
-import { endWalkBody, shapeifyBody, startWalkBody, walkIdParams } from '../schemas';
-import type { Store } from '../store';
+import { endWalkBody, petIdQuery, shapeifyBody, startWalkBody, walkIdParams } from '../schemas';
+import type { Store, WalkLogRecord } from '../store';
+import { randomUUID } from 'node:crypto';
+import type { z } from 'zod';
+
+type EndWalkBody = z.infer<typeof endWalkBody>;
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+// Korean relative time for the walk list ("방금 전", "5분 전", "3시간 전", "2일 전").
+export function formatTimeAgo(endedAt: Date, now: Date = new Date()): string {
+  const diff = Math.max(0, now.getTime() - endedAt.getTime());
+  if (diff < MINUTE_MS) return '방금 전';
+  if (diff < HOUR_MS) return `${Math.floor(diff / MINUTE_MS)}분 전`;
+  if (diff < DAY_MS) return `${Math.floor(diff / HOUR_MS)}시간 전`;
+  return `${Math.floor(diff / DAY_MS)}일 전`;
+}
+
+// Stored walk -> client WalkSession shape (src/types.ts), without owner fields.
+function toWalkSession(walk: WalkLogRecord, now: Date = new Date()) {
+  const { userId: _userId, endedAt, ...session } = walk;
+  const ended = new Date(endedAt);
+  return {
+    ...session,
+    date: ended.toISOString().slice(0, 10).replace(/-/g, '.'),
+    timeAgo: formatTimeAgo(ended, now),
+    endedAt
+  };
+}
 
 export function registerWalkRoutes(app: Express, store: Store): void {
-  const { activeWalks, petsDb } = store;
+  const { activeWalks, petsDb, walkLogsDb } = store;
   const memberOfBodyPet = requirePetAccess(petsDb, { from: 'body', level: 'member' });
+  const memberOfQueryPet = requirePetAccess(petsDb, { from: 'query', level: 'member', optional: true });
 
   app.post('/api/v1/walks/start', validate({ body: startWalkBody }), memberOfBodyPet, (req, res) => {
     const { petId, startLatitude, startLongitude } = req.body;
@@ -22,36 +52,58 @@ export function registerWalkRoutes(app: Express, store: Store): void {
     res.status(201).json({ success: true, walkId, message: '산책이 시작되었습니다.' });
   });
 
+  // GET /api/v1/walks?petId= - Finished walks (newest first) for one accessible
+  // pet, or for every pet the caller can access.
+  app.get('/api/v1/walks', validate({ query: petIdQuery }), memberOfQueryPet, (req, res) => {
+    const petId = req.query.petId as string | undefined;
+    const ids = petId ? new Set([petId]) : accessiblePetIds(getAuthUser(res));
+    const now = new Date();
+    const walks = walkLogsDb
+      .filter(w => ids.has(w.petId))
+      .slice()
+      .reverse()
+      .map(w => toWalkSession(w, now));
+    res.json({ success: true, count: walks.length, data: walks });
+  });
+
   app.post('/api/v1/walks/end', validate({ body: endWalkBody }), (req, res) => {
-    const { walkId, distanceKm, durationSeconds, calories, steps, coordinates } = req.body;
-    const activeWalk = walkId ? activeWalks[walkId] : undefined;
-    const walk = activeWalk || { startedAt: new Date() };
+    const body = req.body as EndWalkBody;
+    const activeWalk = body.walkId ? activeWalks[body.walkId] : undefined;
 
     // The pet comes from the active walk if there is one, otherwise from the body
     // (the client logs finished walks with { ...session, petId }).
-    const petId: unknown = activeWalk?.petId ?? req.body.petId;
+    const petId: unknown = activeWalk?.petId ?? body.petId;
     if (typeof petId !== 'string') {
       return res.status(400).json({ success: false, message: '산책한 반려동물(petId)이 필요합니다.' });
     }
+    const user = getAuthUser(res);
     const pet = petsDb.find(p => p.id === petId);
-    if (!pet || !getPetAccess(getAuthUser(res), pet)) return sendPetNotFound(res);
+    if (!pet || !getPetAccess(user, pet)) return sendPetNotFound(res);
 
-    const walkLog = {
-      id: walkId || `walk_${Date.now()}`,
+    // Keep the client's id (shapeify references it) unless it is already taken.
+    const requestedId = body.walkId ?? body.id;
+    const id = requestedId && !walkLogsDb.some(w => w.id === requestedId) ? requestedId : `walk_${randomUUID()}`;
+
+    // Missing metrics are stored as 0, never replaced with made-up numbers.
+    const walkLog: WalkLogRecord = {
+      id,
       petId,
-      distanceKm: distanceKm || 1.8,
-      durationSeconds: durationSeconds || 1800,
-      calories: calories || 120,
-      steps: steps || 2400,
-      rawCoordinatesJson: coordinates || walk.coordinates || [],
-      shapeType: 'paw',
-      weather: '☀️ 24°C 맑음',
-      savedCardUrl: 'https://images.unsplash.com/photo-1530281700549-e82e7bf110d6?w=600',
-      endedAt: new Date()
+      userId: user.id,
+      durationMinutes: body.durationMinutes ?? 0,
+      distanceKm: body.distanceKm ?? 0,
+      calories: body.calories ?? 0,
+      stepCount: body.stepCount ?? 0,
+      rawPath: body.rawPath ?? activeWalk?.coordinates ?? [],
+      shapeType: body.shapeType ?? 'raw',
+      ...(body.shapedPath ? { shapedPath: body.shapedPath } : {}),
+      ...(body.note ? { note: body.note } : {}),
+      weather: body.weather || '',
+      endedAt: new Date().toISOString()
     };
+    walkLogsDb.push(walkLog);
 
-    delete activeWalks[walkId];
-    res.json({ success: true, data: walkLog, message: '산책이 성공적으로 종료되어 기록되었습니다.' });
+    if (body.walkId) delete activeWalks[body.walkId];
+    res.json({ success: true, data: toWalkSession(walkLog), message: '산책이 성공적으로 종료되어 기록되었습니다.' });
   });
 
   // POST /api/v1/walks/:walkId/shapeify - Shapeify Route Transformation API

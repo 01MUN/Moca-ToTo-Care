@@ -20,6 +20,9 @@ export interface FamilyInviteRecord {
   inviterId: string;
   inviterName: string;
   expiresAt: string;
+  /** Set when the code is redeemed; codes are single-use. */
+  usedAt?: string;
+  usedBy?: string;
 }
 
 export interface AIConsultationRecord {
@@ -38,6 +41,40 @@ export interface AIConsultationRecord {
   veterinaryTip: string;
   actionPlan: string[];
   createdAt: string;
+}
+
+// Health record in the client's HealthRecord shape (src/types.ts) plus petId.
+// `date` uses the client display format YYYY.MM.DD.
+export interface HealthRecordEntry {
+  id: string;
+  petId: string;
+  date: string;
+  category: 'checkup' | 'vaccine' | 'treatment' | 'dental' | 'surgery';
+  hospitalName: string;
+  doctorName?: string;
+  diagnosis: string;
+  prescription?: string;
+  cost: number;
+  weightKg?: number;
+  memo?: string;
+}
+
+// Finished walk in the client's WalkSession shape (src/types.ts) plus owner info.
+// `date`/`timeAgo` are derived from endedAt when the walk is returned.
+export interface WalkLogRecord {
+  id: string;
+  petId: string;
+  userId: string;
+  durationMinutes: number;
+  distanceKm: number;
+  calories: number;
+  stepCount: number;
+  rawPath: Array<{ x: number; y: number } | { lat: number; lng: number }>;
+  shapeType: 'paw' | 'heart' | 'bone' | 'raw';
+  shapedPath?: string;
+  note?: string;
+  weather: string;
+  endedAt: string;
 }
 
 // bcrypt hash of the demo password "password123" shared by the seeded demo accounts.
@@ -80,16 +117,8 @@ export function createStore() {
     }
   ];
 
-  const familyInvitesDb: FamilyInviteRecord[] = [
-    {
-      inviteCode: 'MOCA-LOVE-7728',
-      petId: 'p1',
-      petName: '모카',
-      inviterId: 'u1',
-      inviterName: '모카맘',
-      expiresAt: '2026-12-31T23:59:59.000Z'
-    }
-  ];
+  // No seeded invite: codes are random, single-use and issued via POST /auth/family/invite.
+  const familyInvitesDb: FamilyInviteRecord[] = [];
 
   const petsDb = [
     {
@@ -143,22 +172,25 @@ export function createStore() {
     }
   ];
 
-  const healthRecordsDb = [
+  const healthRecordsDb: HealthRecordEntry[] = [
     {
       id: 'h1',
       petId: 'p1',
-      visitDate: '2026-08-01',
+      date: '2026.08.01',
       category: 'vaccine',
       hospitalName: '행복 24시 동물병원',
       doctorName: '김수석 원장님',
       diagnosis: '광견병 및 종합 백신 5차 추가 접종 완료',
       prescription: '3일간 목욕 자제 및 무리한 운동 금지',
       cost: 45000,
-      weightAtVisit: 3.8
+      weightKg: 3.8
     }
   ];
 
   const activeWalks: Record<string, any> = {};
+
+  // Finished walks, oldest first (GET /walks returns newest first).
+  const walkLogsDb: WalkLogRecord[] = [];
 
   const placesDb = [
     {
@@ -240,6 +272,7 @@ export function createStore() {
     dailyRecordsDb,
     healthRecordsDb,
     activeWalks,
+    walkLogsDb,
     placesDb,
     aiConsultationsDb
   };

@@ -14,6 +14,17 @@ const id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, '올바르지 않은 ID 형
 const text = (max: number) => z.string().trim().max(max);
 const requiredText = (max: number) => z.string().trim().min(1).max(max);
 const isoDate = z.iso.date();
+// Client display date (YYYY.MM.DD) or ISO (YYYY-MM-DD); must be a real calendar
+// date. Normalized to the client display format YYYY.MM.DD.
+const displayDate = z
+  .string()
+  .regex(/^\d{4}[.-]\d{2}[.-]\d{2}$/, 'YYYY.MM.DD 또는 YYYY-MM-DD 형식이어야 합니다.')
+  .transform((v) => v.replace(/-/g, '.'))
+  .refine((v) => {
+    const [y, m, d] = v.split('.').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+  }, '존재하지 않는 날짜입니다.');
 const nonNegative = (max: number) => z.number().finite().min(0).max(max);
 const latitude = z.number().finite().min(-90).max(90);
 const longitude = z.number().finite().min(-180).max(180);
@@ -106,16 +117,18 @@ export const dailyRecordBody = z.object({
   notes: text(2000).optional()
 });
 
+// Field names follow the client HealthRecord type (src/types.ts).
 export const healthRecordBody = z.object({
   petId: id,
-  visitDate: isoDate.optional(),
+  date: displayDate.optional(),
   category: z.enum(['checkup', 'vaccine', 'treatment', 'dental', 'surgery']).optional(),
   hospitalName: text(100).optional(),
   doctorName: text(50).optional(),
   diagnosis: text(2000).optional(),
   prescription: text(2000).optional(),
   cost: nonNegative(100_000_000).optional(),
-  weightAtVisit: z.number().finite().positive().max(200).optional()
+  weightKg: z.number().finite().positive().max(200).optional(),
+  memo: text(2000).optional()
 });
 
 // ---------- walks ----------
@@ -125,14 +138,21 @@ export const startWalkBody = z.object({
   startLongitude: longitude.optional()
 });
 
+// Field names follow the client WalkSession type (src/types.ts). `walkId`
+// refers to a walk started with POST /walks/start; `id` is the client's id.
 export const endWalkBody = z.object({
   petId: id.optional(),
   walkId: id.optional(),
+  id: id.optional(),
+  durationMinutes: z.number().int().min(0).max(7 * 24 * 60).optional(),
   distanceKm: nonNegative(1000).optional(),
-  durationSeconds: z.number().int().min(0).max(7 * 24 * 3600).optional(),
   calories: nonNegative(100_000).optional(),
-  steps: z.number().int().min(0).max(10_000_000).optional(),
-  coordinates: coordinateList.optional()
+  stepCount: z.number().int().min(0).max(10_000_000).optional(),
+  rawPath: coordinateList.optional(),
+  shapeType: z.enum(['paw', 'heart', 'bone', 'raw']).optional(),
+  shapedPath: text(20_000).optional(),
+  note: text(500).optional(),
+  weather: text(100).optional()
 });
 
 export const shapeifyBody = z.object({
