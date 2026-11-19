@@ -13,7 +13,7 @@ import {
   INITIAL_WALK_SESSIONS,
   INITIAL_COMMUNITY_PLACES,
 } from './data/mockData';
-import { petApiService, authApiService } from './services/api';
+import { petApiService, authApiService, authEvents, authStorage, isUnauthorizedError } from './services/api';
 import { Splash } from './components/Splash';
 import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
@@ -31,6 +31,8 @@ import { FlutterCodeViewerModal } from './components/FlutterCodeViewerModal';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCircle2, RefreshCw } from 'lucide-react';
 
+type AuthStatus = 'checking' | 'authenticated' | 'anonymous';
+
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -39,15 +41,13 @@ export default function App() {
   const [activeThemeId, setActiveThemeId] = useState<ThemeId>('living');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>({
-    id: 'u1',
-    email: 'moca_mom@toto.com',
-    nickname: '모카맘 (대표 보호자)',
-    role: 'owner',
-    avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
-    sharedPetIds: [],
-    createdAt: '2026-01-01T00:00:00.000Z'
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // 'checking' while a stored token is verified via /auth/me; the app content is
+  // only rendered when 'authenticated', otherwise a login gate is shown.
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(() =>
+    authStorage.getToken() ? 'checking' : 'anonymous'
+  );
+  const [authNotice, setAuthNotice] = useState<string | undefined>(undefined);
 
   // Modals
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -63,44 +63,80 @@ export default function App() {
   const [walkSessions, setWalkSessions] = useState<WalkSession[]>(INITIAL_WALK_SESSIONS);
   const [communityPlaces, setCommunityPlaces] = useState<CommunityPlace[]>(INITIAL_COMMUNITY_PLACES);
 
-  // Fetch initial data & current user from backend API
+  // Any protected request answered with 401 (expired/invalid token): the API
+  // client has already cleared the token; drop the session and show the login gate.
+  useEffect(() => {
+    return authEvents.onUnauthorized(() => {
+      setCurrentUser(null);
+      setAuthStatus('anonymous');
+      setAuthNotice('로그인이 만료되었습니다. 다시 로그인해주세요.');
+    });
+  }, []);
+
+  // Public data (no login required)
   useEffect(() => {
     let isMounted = true;
-    async function loadBackendData() {
-      setIsSyncing(true);
-      try {
-        const [meData, backendPets, backendDaily, backendHealth, backendPlaces] = await Promise.all([
-          authApiService.getMe().catch(() => null),
-          petApiService.getPets().catch(() => INITIAL_PETS),
-          petApiService.getDailyRecords().catch(() => INITIAL_DAILY_RECORDS),
-          petApiService.getHealthRecords().catch(() => INITIAL_HEALTH_RECORDS),
-          petApiService.getNearbyPlaces().catch(() => INITIAL_COMMUNITY_PLACES),
-        ]);
-
-        if (isMounted) {
-          if (meData?.user) setCurrentUser(meData.user);
-          if (backendPets && backendPets.length > 0) {
-            setPets(backendPets);
-            if (!backendPets.find(p => p.id === currentPetId)) {
-              setCurrentPetId(backendPets[0].id);
-            }
-          }
-          if (backendDaily && backendDaily.length > 0) setDailyRecords(backendDaily);
-          if (backendHealth && backendHealth.length > 0) setHealthRecords(backendHealth);
-          if (backendPlaces && backendPlaces.length > 0) setCommunityPlaces(backendPlaces);
-        }
-      } catch (err) {
-        console.warn('Backend sync warning:', err);
-      } finally {
-        if (isMounted) setIsSyncing(false);
-      }
-    }
-
-    loadBackendData();
+    petApiService
+      .getNearbyPlaces()
+      .then((places) => {
+        if (isMounted && places.length > 0) setCommunityPlaces(places);
+      })
+      .catch((err) => console.warn('Places sync warning:', err));
     return () => {
       isMounted = false;
     };
   }, []);
+
+  // Verify a stored token on startup
+  useEffect(() => {
+    if (authStatus !== 'checking') return;
+    let isMounted = true;
+    authApiService
+      .getMe()
+      .then((me) => {
+        if (!isMounted) return;
+        applySession(me.user, me.managedPets);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        // 401 is handled by the onUnauthorized listener; any other failure
+        // (e.g. offline) also leaves the user logged out rather than faking a session.
+        if (!isUnauthorizedError(err)) console.warn('Session check failed:', err);
+        setAuthStatus('anonymous');
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [authStatus]);
+
+  // Load the logged-in user's records. Network failures may fall back to demo
+  // data, but a 401 never does (it rejects and triggers the login gate instead).
+  async function loadProtectedData() {
+    setIsSyncing(true);
+    try {
+      const [backendDaily, backendHealth] = await Promise.all([
+        petApiService.getDailyRecords(),
+        petApiService.getHealthRecords(),
+      ]);
+      setDailyRecords(backendDaily);
+      setHealthRecords(backendHealth);
+    } catch (err) {
+      if (!isUnauthorizedError(err)) console.warn('Backend sync warning:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  function applySession(user: User, managedPets: PetProfile[]) {
+    setCurrentUser(user);
+    setAuthStatus('authenticated');
+    setAuthNotice(undefined);
+    if (managedPets && managedPets.length > 0) {
+      setPets(managedPets);
+      setCurrentPetId((prevId) => (managedPets.some((p) => p.id === prevId) ? prevId : managedPets[0].id));
+    }
+    void loadProtectedData();
+  }
 
   const currentPet = pets.find((p) => p.id === currentPetId) || pets[0] || INITIAL_PETS[0];
   const activeTheme = THEME_OPTIONS.find((t) => t.id === activeThemeId) || THEME_OPTIONS[1];
@@ -110,11 +146,7 @@ export default function App() {
   };
 
   const handleLoginSuccess = (user: User, managedPets: PetProfile[]) => {
-    setCurrentUser(user);
-    if (managedPets && managedPets.length > 0) {
-      setPets(managedPets);
-      setCurrentPetId(managedPets[0].id);
-    }
+    applySession(user, managedPets);
   };
 
   const handleJoinFamilySuccess = (pet: PetProfile) => {
@@ -230,7 +262,26 @@ export default function App() {
           {showSplash && <Splash onFinish={() => setShowSplash(false)} />}
         </AnimatePresence>
 
-        {!showSplash && (
+        {/* Login gate: app content (and any demo data) is not rendered while logged out */}
+        {!showSplash && authStatus === 'anonymous' && (
+          <AuthModal
+            isOpen
+            dismissible={false}
+            onClose={() => {}}
+            currentUser={null}
+            notice={authNotice}
+            onLoginSuccess={handleLoginSuccess}
+          />
+        )}
+
+        {!showSplash && authStatus === 'checking' && (
+          <div className="flex min-h-full items-center justify-center gap-2 py-24 text-sm font-bold text-[#8B5E3C]">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            <span>로그인 상태 확인 중...</span>
+          </div>
+        )}
+
+        {!showSplash && authStatus === 'authenticated' && (
           <div className="flex flex-col min-h-full">
             {/* Top Backend Sync Status Bar */}
             <div className="bg-emerald-800 text-emerald-100 px-4 py-1 text-[11px] flex items-center justify-between font-medium">
