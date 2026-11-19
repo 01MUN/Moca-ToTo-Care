@@ -8,8 +8,8 @@ import { registerPlaceRoutes } from './routes/places';
 import { registerAiRoutes } from './routes/ai';
 
 import { createAuthGuard } from './auth';
-import { jsonBodyErrorHandler } from './validation';
-import { JSON_BODY_LIMIT } from './schemas';
+import { finalErrorHandler, jsonBodyErrorHandler } from './validation';
+import { AUTH_BODY_LIMIT, JSON_BODY_LIMIT } from './schemas';
 
 export interface CreateAppOptions {
   jwtSecret: string;
@@ -23,9 +23,12 @@ export function createApp(options: CreateAppOptions): express.Express {
   const store = options.store ?? createStore();
   const { jwtSecret } = options;
 
-  // Auth runs before body parsing so unauthenticated requests are rejected
-  // without buffering up to JSON_BODY_LIMIT of payload.
+  // Auth runs before body parsing so unauthenticated requests to protected
+  // routes are rejected without buffering up to JSON_BODY_LIMIT of payload.
   app.use('/api/v1', createAuthGuard(jwtSecret, store.usersDb));
+  // Public auth routes only ever need a small body; the first parser to run
+  // consumes the body, so the large limit below never applies to them.
+  app.use('/api/v1/auth', express.json({ limit: AUTH_BODY_LIMIT }));
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
   app.use(jsonBodyErrorHandler);
 
@@ -35,6 +38,9 @@ export function createApp(options: CreateAppOptions): express.Express {
   registerWalkRoutes(app, store);
   registerPlaceRoutes(app, store);
   registerAiRoutes(app, store);
+
+  // Last-resort handler: never leak stack traces or internal messages.
+  app.use(finalErrorHandler);
 
   return app;
 }

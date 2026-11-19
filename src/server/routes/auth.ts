@@ -1,4 +1,5 @@
-import type { Express } from 'express';
+import { randomUUID } from 'node:crypto';
+import type { Express, Response } from 'express';
 import type { UserRecord, FamilyInviteRecord } from '../store';
 import { getAuthUser } from '../auth';
 import { signAccessToken } from '../jwt';
@@ -12,6 +13,18 @@ const TIMING_DUMMY_HASH = '$2b$10$G07dPzBHw0SA1soYQSQy1OIPxj0SgeV5Dl8yAKkfr6MN7T
 
 export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string): void {
   const { usersDb, familyInvitesDb, petsDb } = store;
+
+  // Signs a token or answers 500 (inside async handlers a throw would become an
+  // unhandled rejection in Express 4). Returns null when a response was sent.
+  const issueToken = (res: Response, userId: string): string | null => {
+    try {
+      return signAccessToken(userId, jwtSecret);
+    } catch (err) {
+      console.error('Token signing error:', err);
+      res.status(500).json({ success: false, message: '인증 토큰 발급 중 오류가 발생했습니다.' });
+      return null;
+    }
+  };
 
   // ==========================================
   // [v1 API] Auth Endpoints
@@ -33,7 +46,8 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
       return res.status(401).json({ success: false, message: '이메일 또는 비밀번호가 일치하지 않습니다.' });
     }
 
-    const token = signAccessToken(user.id, jwtSecret);
+    const token = issueToken(res, user.id);
+    if (!token) return;
     const userPetIds = [...user.ownedPetIds, ...user.sharedPetIds];
     const managedPets = petsDb.filter(p => userPetIds.includes(p.id));
 
@@ -79,7 +93,9 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
     }
 
     const newUser: UserRecord = {
-      id: `u${Date.now()}`,
+      // Random, unguessable id: Date.now() ids could collide for concurrent
+      // signups and let one user's token resolve to another account.
+      id: `u_${randomUUID()}`,
       email,
       passwordHash,
       nickname,
@@ -90,8 +106,10 @@ export function registerAuthRoutes(app: Express, store: Store, jwtSecret: string
       createdAt: new Date().toISOString()
     };
 
+    // Sign before persisting so a signing failure never leaves an orphan account.
+    const token = issueToken(res, newUser.id);
+    if (!token) return;
     usersDb.push(newUser);
-    const token = signAccessToken(newUser.id, jwtSecret);
 
     res.status(201).json({
       success: true,

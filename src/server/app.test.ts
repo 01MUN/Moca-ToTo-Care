@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from './app';
 import { createStore, type Store } from './store';
 import { signAccessToken } from './jwt';
@@ -146,6 +146,51 @@ describe('password hashing', () => {
 
     expect((await call('GET', '/auth/me', { token: signupToken })).status).toBe(200);
     expect(await login('new@pet.com', 'my-strong-pw')).toBeTruthy();
+  });
+});
+
+describe('hardening', () => {
+  it('gives distinct, unguessable ids to users who sign up in the same millisecond', async () => {
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+    try {
+      const [a, b] = await Promise.all([
+        call('POST', '/auth/signup', { body: { email: 'a1@pet.com', password: 'password123', nickname: 'A' } }),
+        call('POST', '/auth/signup', { body: { email: 'b1@pet.com', password: 'password123', nickname: 'B' } })
+      ]);
+      const [idA, idB] = [(await a.json()).data.user.id, (await b.json()).data.user.id];
+      expect(idA).not.toBe(idB);
+      expect(idA).not.toBe('u1800000000000');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('limits public auth request bodies to a small size (413)', async () => {
+    const res = await call('POST', '/auth/login', {
+      body: { email: 'moca_mom@toto.com', password: 'password123', padding: 'x'.repeat(32 * 1024) }
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it('returns a generic JSON 500 instead of crashing or leaking a stack trace', async () => {
+    const brokenStore = createStore();
+    // Make GET /pets throw inside the handler.
+    brokenStore.petsDb = new Proxy(brokenStore.petsDb, {
+      get(target, prop, receiver) {
+        if (prop === 'filter') throw new Error('secret internal detail');
+        return Reflect.get(target, prop, receiver);
+      }
+    });
+    const local = await startTestServer(createApp({ jwtSecret: SECRET, store: brokenStore }));
+    try {
+      const res = await fetch(`${local.baseUrl}/pets`, { headers: { Authorization: `Bearer ${signAccessToken('u1', SECRET)}` } });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).not.toContain('secret internal detail');
+      expect(JSON.parse(text).success).toBe(false);
+    } finally {
+      await local.close();
+    }
   });
 });
 

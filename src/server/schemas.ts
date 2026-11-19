@@ -6,6 +6,7 @@ import { MAX_PASSWORD_BYTES, passwordByteLength } from './password';
 // protected fields like id/userId cannot be overwritten.
 
 export const JSON_BODY_LIMIT = '10mb';
+export const AUTH_BODY_LIMIT = '16kb';
 export const MAX_IMAGE_BASE64_CHARS = 8 * 1024 * 1024;
 const MAX_COORDINATES = 10_000;
 

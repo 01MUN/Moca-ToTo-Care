@@ -68,3 +68,14 @@ export const jsonBodyErrorHandler: express.ErrorRequestHandler = (err, _req, res
   }
   next(err);
 };
+
+// Final error handler: logs the detail server-side and returns a generic JSON
+// 500 so stack traces / internal messages never reach the client.
+export const finalErrorHandler: express.ErrorRequestHandler = (err, _req, res, next) => {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+  console.error('Unhandled API error:', err);
+  res.status(500).json({ success: false, message: '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' });
+};
